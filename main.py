@@ -7,13 +7,22 @@ os.chdir("C:/Users/junha/venvs/vsopencv/SourceCode/Project") #경로 수정
 def onMouse(event, x, y, flags, param):
     global coordinate, mode
 
-    if event == cv2.EVENT_LBUTTONDOWN: #모드 선택
+    #모드 선택
+    if event == cv2.EVENT_LBUTTONDOWN: 
         if (0 <= x <=100) and (0 <= y <= 100):
             mode = 1 #차선 좌표 선택 모드
+            coordinate.clear()
         elif (0 <= x <=100) and (100 <= y <= 200):
             mode = 2 #신호등 좌표 선택 모드
+            coordinate.clear()
         elif (0 <= x <=100) and (100 <= y <= 300):
             mode = 3 #차량 좌표 선택 모드
+            coordinate.clear()
+
+    #기본 모드로 초기화
+    if event == cv2.EVENT_MOUSEWHEEL:
+        mode = 0 #차선 좌표 선택 모드
+        coordinate.clear()
 
     #기본 모드가 아닐 경우 좌표 수집
     if mode != 0:
@@ -128,10 +137,9 @@ _mainboard[0:600, 700:1000] = _channelboard
 
 #카메라 연결 및 초기 설정 처리
 road_video_path = "Videos/v2.mp4"  
-blinker_video_path = "Videos/blinker.mp4"
+
 # VideoCapture 객체 생성
 road_capture = cv2.VideoCapture(road_video_path)
-blinker_capture = cv2.VideoCapture(blinker_video_path)
 
 #capture = cv2.VideoCapture(0)								# 0번 카메라 연결
 if road_capture.isOpened() is None: raise Exception("카메라 연결 안됨")
@@ -140,11 +148,6 @@ road_capture.set(cv2.CAP_PROP_FRAME_WIDTH, road_width)      # 카메라 프레�
 road_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, road_height)     # 카메라 프레임 높이
 road_capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)          # 오토포커싱 중지
 road_capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
-
-blinker_capture.set(cv2.CAP_PROP_FRAME_WIDTH, blinker_width)      # 카메라 프레임 너비
-blinker_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, blinker_height)     # 카메라 프레임 높이
-blinker_capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)          # 오토포커싱 중지
-blinker_capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
 
 while True:
     road_ret, road_frame = road_capture.read()                 # 카메라 영상 받기
@@ -157,6 +160,16 @@ while True:
     #노트북 내장 카메라가 너비와 높이 설정이 적용 안돼서 받아온 frame을 직접 사이즈 조정
     if road_frame.shape[0] != road_height or road_frame.shape[1] != road_width:
         road_frame = cv2.resize(road_frame, (600, 600), interpolation=cv2.INTER_CUBIC)
+
+    #메인 프레임 모드별 활성화
+    if mode == 0: #기본 모드
+        pass
+    elif mode == 1: #차선 선택 모드
+        pass
+    elif mode == 2: #신호등 선택 모드
+        pass 
+    elif mode == 3: #차량 선택 모드
+        pass
     
     #좌표가 있을 경우 좌표 화면에 그리기
     if 0 < len(coordinate):
@@ -172,8 +185,6 @@ while True:
     if road_mask is not None:
         road_frame = find_line(road_frame, road_mask)
     
-    #if blinker_frame.shape[0] != blinker_height or blinker_frame.shape[1] != blinker_width:
-    #    blinker_frame = cv2.resize(blinker_frame, (300, 300), interpolation=cv2.INTER_LINEAR)
     #캐니 에지 검출 
     #edge = cv2.Canny(frame, 100, 150)
     #frame = cv2.bitwise_and(frame, frame, mask=edge)
@@ -181,8 +192,6 @@ while True:
 
     put_string(road_frame, "Current Mode : " , (10, 50), mode_text[mode])   # 줌 값 표시
     _mainboard[0:600, 100:700] = road_frame
-    
-    #_mainboard[0:300, 700:1000] = blinker_frame
 
     cv2.imshow(title, _mainboard)
     cv2.setMouseCallback(title, onMouse)
