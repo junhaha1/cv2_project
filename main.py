@@ -21,11 +21,12 @@ def find_line(frame, mask):
 
     masked_edges = cv2.bitwise_and(gray_canny, mask)
     return draw_line(frame, masked_edges)
-#사용자가 입력한 좌표대로 다각형 출력
-def make_roadmask(frame, line_coordinate):
+
+#사용자가 입력한 좌표대로 마스크 생성
+def make_mask(frame, coordinate):
     mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
     location = []
-    for loc in line_coordinate:
+    for loc in coordinate:
         location.append(loc)
     vertices = np.array([location], dtype=np.int32)
     cv2.fillPoly(mask, vertices, 255)
@@ -68,8 +69,11 @@ title = "RoadMap"
 
 #차선 감지 영역 좌표
 line_coordinate = []
-#차선 위치 마스크
-road_mask = None
+
+#마스크
+road_mask = None #차선 마스크
+blinker_mask = None #신호등 마스크
+safe_car_mask = None #안전거리 차량 마스크
 
 #각 레이아웃 영역 변수
 main_width = 1000
@@ -135,7 +139,7 @@ while True:
     
     #좌표가 2개 이상이고 스페이스바를 눌렀을 경우
     if 2 < len(line_coordinate) and key==32:
-        road_mask = make_roadmask(road_frame, line_coordinate)
+        road_mask = make_mask(road_frame, line_coordinate)
         cv2.imshow("test", road_mask)
 
     #차선 마스크가 존재할 경우 차선 검출
