@@ -5,14 +5,26 @@ import numpy as np
 os.chdir("C:/Users/junha/venvs/vsopencv/SourceCode/Project") #경로 수정
 
 def onMouse(event, x, y, flags, param):
-    global line_coordinate
-    if event == cv2.EVENT_LBUTTONDOWN: #좌표 선택
-        if 100 <= x <= 700:
-            line_coordinate.append((x - 100, y)) 
-            print(len(line_coordinate))
-    elif event == cv2.EVENT_RBUTTONDOWN: #좌표 선택 취소
-        if len(line_coordinate) > 0:
-            line_coordinate.pop()
+    global coordinate, mode
+
+    if event == cv2.EVENT_LBUTTONDOWN: #모드 선택
+        if (0 <= x <=100) and (0 <= y <= 100):
+            mode = 1 #차선 좌표 선택 모드
+        elif (0 <= x <=100) and (100 <= y <= 200):
+            mode = 2 #신호등 좌표 선택 모드
+        elif (0 <= x <=100) and (100 <= y <= 300):
+            mode = 3 #차량 좌표 선택 모드
+
+    #기본 모드가 아닐 경우 좌표 수집
+    if mode != 0:
+        if event == cv2.EVENT_LBUTTONDOWN: #좌표 선택
+            if 100 <= x <= 700:
+                coordinate.append((x - 100, y)) 
+                print(len(coordinate))
+        elif event == cv2.EVENT_RBUTTONDOWN: #좌표 선택 취소
+            if len(coordinate) > 0:
+                coordinate.pop()
+
 #차선 찾기
 def find_line(frame, mask):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -48,7 +60,6 @@ def draw_icons(frame):
         y += 100
     return frame
 
-
 #좌표 위치 그리기
 def draw_coord(frame, line_coordinate):
     for x, y in line_coordinate:
@@ -64,11 +75,25 @@ def draw_line(frame, edge):
             cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)  # 녹색 선 그리기
     return frame
 
+#문자열 출력 함수
+def put_string(frame, text, pt, value, color=(120, 200, 90)):         
+    text += str(value)
+    shade = (pt[0] + 2, pt[1] + 2)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(frame, text, shade, font, 0.7, (0, 0, 0), 2)  # 그림자 효과
+    cv2.putText(frame, text, pt, font, 0.7, (120, 200, 90), 2)  # 글자 적기
+
+#텍스트
 title = "RoadMap"
+mode_text = ("Common Mode",
+            "Line Select Mode",
+            "Blinker Select Mode",
+            "Car Select Mode"
+            )
 
-
-#차선 감지 영역 좌표
-line_coordinate = []
+#좌표 영역
+coordinate = []
+mode = 0 #모드
 
 #마스크
 road_mask = None #차선 마스크
@@ -134,12 +159,13 @@ while True:
         road_frame = cv2.resize(road_frame, (600, 600), interpolation=cv2.INTER_CUBIC)
     
     #좌표가 있을 경우 좌표 화면에 그리기
-    if 0 < len(line_coordinate):
-        road_frame = draw_coord(road_frame, line_coordinate)
+    if 0 < len(coordinate):
+        road_frame = draw_coord(road_frame, coordinate)
     
     #좌표가 2개 이상이고 스페이스바를 눌렀을 경우
-    if 2 < len(line_coordinate) and key==32:
-        road_mask = make_mask(road_frame, line_coordinate)
+    if 2 < len(coordinate) and key==32:
+        road_mask = make_mask(road_frame, coordinate)
+        mode = 0 #기본 모드로 초기화
         cv2.imshow("test", road_mask)
 
     #차선 마스크가 존재할 경우 차선 검출
@@ -153,7 +179,9 @@ while True:
     #frame = cv2.bitwise_and(frame, frame, mask=edge)
     #frame = cv2.flip(frame, 1)  # 좌우 반전
 
+    put_string(road_frame, "Current Mode : " , (10, 50), mode_text[mode])   # 줌 값 표시
     _mainboard[0:600, 100:700] = road_frame
+    
     #_mainboard[0:300, 700:1000] = blinker_frame
 
     cv2.imshow(title, _mainboard)
