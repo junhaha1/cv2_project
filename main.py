@@ -7,33 +7,30 @@ os.chdir("C:/Users/junha/venvs/vsopencv/SourceCode/Project") #경로 수정
 def onMouse(event, x, y, flags, param):
     global line_coordinate
     if event == cv2.EVENT_LBUTTONDOWN: #좌표 선택
-        if len(line_coordinate) < 4: #좌표가 4개 미만일 경우에만
-            line_coordinate.append((x, y)) 
-            print(len(line_coordinate))
+        line_coordinate.append((x - 100, y)) 
+        print(len(line_coordinate))
     elif event == cv2.EVENT_RBUTTONDOWN: #좌표 선택 취소
         line_coordinate.pop()
 
 #차선 찾기
-def find_line(frame):
-    height = frame.shape[0]
-    width = frame.shape[1]
-    roi = frame[height//2:height, 0:width]
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+def find_line(frame, mask):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5,5), 0)
     gray_canny = cv2.Canny(blur, 50, 150)
 
-    '''
-    mask = np.zeros_like(gray_canny)
-    vertices = np.array([[
-        (width * 0.1, height),  # 좌측 하단
-        (width * 0.9, height),  # 우측 하단
-        (width * 0.5, height * 0.6)  # 중앙 위쪽
-    ]], dtype=np.int32)
-
-    cv2.fillPoly(mask, vertices, 255)
     masked_edges = cv2.bitwise_and(gray_canny, mask)
-    '''
-    return draw_line(frame, roi, gray_canny)
+    return draw_line(frame, masked_edges)
+
+#사용자가 입력한 좌표대로 다각형 출력
+def make_roadmask(frame, line_coordinate):
+    mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+    location = []
+    for loc in line_coordinate:
+        location.append(loc)
+    vertices = np.array([location], dtype=np.int32)
+    cv2.fillPoly(mask, vertices, 255)
+
+    return mask
 
 #좌표 위치 그리기
 def draw_coord(frame, line_coordinate):
@@ -42,12 +39,12 @@ def draw_coord(frame, line_coordinate):
     return frame
 
 #차선 그리기
-def draw_line(frame, roi, edge):
+def draw_line(frame, edge):
     lines = cv2.HoughLinesP(edge, rho=1, theta=np.pi/180, threshold=50, minLineLength=100, maxLineGap=50)
     if lines is not None:
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            cv2.line(roi, (x1, y1), (x2, y2), (0, 255, 0), 3)  # 녹색 선 그리기
+            cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)  # 녹색 선 그리기
     return frame
 
 title = "RoadMap"
@@ -55,6 +52,8 @@ title = "RoadMap"
 
 #차선 감지 영역 좌표
 line_coordinate = []
+#차선 위치 마스크
+road_mask = None
 
 main_width = 1000
 main_height = 600
@@ -80,7 +79,7 @@ _mainboard[0:600, 0:100] = _funcboard
 _mainboard[0:600, 700:1000] = _channelboard
 
 #카메라 연결 및 초기 설정 처리
-road_video_path = "Videos/roadA.mp4"  
+road_video_path = "Videos/v2.mp4"  
 blinker_video_path = "Videos/blinker.mp4"
 # VideoCapture 객체 생성
 road_capture = cv2.VideoCapture(road_video_path)
@@ -112,8 +111,18 @@ while True:
     if road_frame.shape[0] != road_height or road_frame.shape[1] != road_width:
         road_frame = cv2.resize(road_frame, (600, 600), interpolation=cv2.INTER_CUBIC)
     
-    if 0 < len(line_coordinate) <= 4:
+    #좌표가 있을 경우 좌표 화면에 그리기
+    if 0 < len(line_coordinate):
         road_frame = draw_coord(road_frame, line_coordinate)
+    
+    #좌표가 2개 이상이고 스페이스바를 눌렀을 경우
+    if 2 < len(line_coordinate) and key==32:
+        road_mask = make_roadmask(road_frame, line_coordinate)
+        cv2.imshow("test", road_mask)
+
+    #차선 마스크가 존재할 경우 차선 검출
+    if road_mask is not None:
+        road_frame = find_line(road_frame, road_mask)
     
     #if blinker_frame.shape[0] != blinker_height or blinker_frame.shape[1] != blinker_width:
     #    blinker_frame = cv2.resize(blinker_frame, (300, 300), interpolation=cv2.INTER_LINEAR)
@@ -122,9 +131,8 @@ while True:
     #frame = cv2.bitwise_and(frame, frame, mask=edge)
     #frame = cv2.flip(frame, 1)  # 좌우 반전
 
-    #road_frame = find_line(road_frame)
-    #_mainboard[0:600, 100:700] = road_frame
+    _mainboard[0:600, 100:700] = road_frame
     #_mainboard[0:300, 700:1000] = blinker_frame
 
-    cv2.imshow(title, road_frame)
+    cv2.imshow(title, _mainboard)
     cv2.setMouseCallback(title, onMouse)
