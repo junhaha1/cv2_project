@@ -8,12 +8,25 @@ os.chdir("C:/Users/junha/venvs/vsopencv/SourceCode/Project") #경로 수정
 def find_line(frame):
     height = frame.shape[0]
     width = frame.shape[1]
-    gray_roi = frame[height//2:height-110, 0:width]
-    gray = cv2.cvtColor(gray_roi, cv2.COLOR_BGR2GRAY)
+    roi = frame[height//2:height, 0:width]
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5,5), 0)
-    gray_canny = cv2.Canny(blur, 100, 150)
+    gray_canny = cv2.Canny(blur, 50, 150)
 
-    return gray_canny
+    return draw_line(frame, roi, gray_canny)
+    '''
+    mask = np.zeros_like(edges)
+    roi_corners = np.array([[(0,height), (0,300), (300,height//2), (400,height//2), (width,400), (width,height)]], dtype=np.int32) #관심 영역 지정
+    cv2.fillPoly(mask, roi_corners, 255)
+    masked_edges = cv2.bitwise_and(edges, mask)
+    '''
+#차선 그리기
+def draw_line(frame, roi, edge):
+    lines = cv2.HoughLinesP(edge, rho=1, theta=np.pi/180, threshold=50, minLineLength=100, maxLineGap=50)
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        cv2.line(roi, (x1, y1), (x2, y2), (0, 255, 0), 3)  # 녹색 선 그리기
+    return frame
 
 #각 레이아웃 영역 변수
 main_width = 1000
