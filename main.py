@@ -6,7 +6,6 @@ os.chdir("C:/Users/junha/venvs/vsopencv/SourceCode/Project") #경로 수정
 
 def onMouse(event, x, y, flags, param):
     global coordinate, mode
-
     #모드 선택
     if event == cv2.EVENT_LBUTTONDOWN: 
         if (0 <= x <=100) and (0 <= y <= 100):
@@ -121,6 +120,12 @@ def make_mask(frame, coordinate):
 
     return mask
 
+#언샤프닝 함수
+def unsharp_image(frame, alpha, beta):
+    blurred = cv2.GaussianBlur(frame, (9, 9), 0)
+    unsharpened_image = cv2.addWeighted(frame, alpha, blurred, beta, 0)
+    return unsharpened_image
+
 #마스크된 이미지 부분을 확대하기
 def zoom_mask(masked_image):
     gray_mask = cv2.cvtColor(masked_image, cv2.COLOR_BGR2GRAY)
@@ -138,11 +143,7 @@ def zoom_mask(masked_image):
         scale_factor = 3
         resized_roi = cv2.resize(roi, (w * scale_factor, h * scale_factor), interpolation=cv2.INTER_CUBIC)
 
-        blurred = cv2.GaussianBlur(resized_roi, (9, 9), 0)
-        # Unsharp Masking 적용
-        alpha = 1.5  # 선명도 조절 (1.0 이상으로 설정하면 더 선명해짐)
-        beta = -0.5  # 블러 정도 (0.0 이하로 설정하여 더 부드럽게)
-        unsharpened_image = cv2.addWeighted(resized_roi, alpha, blurred, beta, 0)
+        unsharpened_image = unsharp_image(resized_roi, 1.5, -0.5)
         
     return unsharpened_image
 
@@ -181,8 +182,8 @@ def put_string(frame, text, pt, value, color=(120, 200, 90)):
     text += str(value)
     shade = (pt[0] + 2, pt[1] + 2)
     font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(frame, text, shade, font, 0.7, (0, 0, 0), 2)  # 그림자 효과
-    cv2.putText(frame, text, pt, font, 0.7, (120, 200, 90), 2)  # 글자 적기
+    cv2.putText(frame, text, shade, font, 0.5, (0, 0, 0), 2)  # 그림자 효과
+    cv2.putText(frame, text, pt, font, 0.5, (120, 200, 90), 2)  # 글자 적기
 
 #텍스트
 title = "RoadMap"
