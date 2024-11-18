@@ -11,6 +11,9 @@ def onMouse(event, x, y, flags, param):
         if (0 <= x <=100) and (0 <= y <= 100):
             mode = 1 #차선 좌표 선택 모드
             coordinate.clear()
+        elif (0 <= x <=100) and (0 <= y <= 100):
+            mode = 1 #차선 좌표 선택 모드
+            coordinate.clear()
         elif (0 <= x <=100) and (100 <= y <= 200):
             mode = 2 #신호등 좌표 선택 모드
             coordinate.clear()
@@ -198,7 +201,7 @@ coordinate = []
 mode = 0 #모드
 
 #마스크
-road_mask = None #차선 마스크
+road_mask = [] #차선 마스크
 blinker_mask = None #신호등 마스크
 safe_car_mask = None #안전거리 차량 마스크
 
@@ -226,7 +229,7 @@ _mainboard[0:600, 0:100] = _funcboard
 _mainboard[0:600, 700:1000] = _channelboard
 
 #카메라 연결 및 초기 설정 처리
-road_video_path = "Videos/blinker.mp4"  
+road_video_path = "Videos/main_road.mp4"  
 
 # VideoCapture 객체 생성
 road_capture = cv2.VideoCapture(road_video_path)
@@ -257,10 +260,10 @@ while True:
     elif mode == 1: #차선 선택 모드
         #좌표가 2개 이상이고 스페이스바를 눌렀을 경우
         if 2 < len(coordinate) and key==32:
-            road_mask = make_mask(road_frame, coordinate)
+            road_mask.append(make_mask(road_frame, coordinate))
             mode = 0 #기본 모드로 초기화
             coordinate.clear()
-            cv2.imshow("test1", road_mask)
+            #cv2.imshow("test1", road_mask)
     elif mode == 2: #신호등 선택 모드
         if 2 < len(coordinate) and key==32:
             blinker_mask = make_mask(road_frame, coordinate)
@@ -278,8 +281,9 @@ while True:
         road_frame = draw_coord(road_frame, coordinate)
     
     #차선 마스크가 존재할 경우 차선 검출
-    if road_mask is not None:
-        road_frame = find_line(road_frame, road_mask)
+    if len(road_mask) > 0:
+        for mask in road_mask:
+            road_frame = find_line(road_frame, mask)
 
     #신호등 마스크가 존재할 경우 신호등 색상 문구 출력
     if blinker_mask is not None:
