@@ -43,6 +43,73 @@ def find_line(frame, mask):
     masked_edges = cv2.bitwise_and(gray_canny, mask)
     return draw_line(frame, masked_edges)
 
+#신호등 검출
+def find_blinker(frame, mask):
+    #frame과 차원 맞추기
+    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    masked_blinker = cv2.bitwise_and(frame, mask)
+    zoom_blinker = zoom_mask(masked_blinker)
+    hsv_blinker = cv2.cvtColor(zoom_blinker, cv2.COLOR_BGR2HSV)
+
+    #명도 평활화를 통해 명암을 고르게 분포하도록  
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    hsv_blinker[:,:,2] = clahe.apply(hsv_blinker[:,:,2])
+
+    #빨강 노랑 초록 색 마스크 만들기
+    # 빨강 색 범위 (두 개의 범위 필요 - 빨강은 경계를 넘나듦)
+    lower_red1 = np.array([0, 100, 100])   # 약간 어두운 빨강
+    upper_red1 = np.array([10, 255, 255])
+    lower_red2 = np.array([160, 100, 100]) # 약간 밝은 빨강
+    upper_red2 = np.array([180, 255, 255])
+
+    # 노랑 색 범위
+    lower_yellow = np.array([20, 100, 100])
+    upper_yellow = np.array([30, 255, 255])
+
+    # 초록 색 범위
+    lower_green = np.array([40, 50, 50])
+    upper_green = np.array([80, 255, 255])
+
+    # 빨강 마스크 (두 개의 범위를 OR로 합침)
+    mask_red1 = cv2.inRange(hsv_blinker, lower_red1, upper_red1)
+    mask_red2 = cv2.inRange(hsv_blinker, lower_red2, upper_red2)
+    mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+
+    # 노랑 마스크
+    mask_yellow = cv2.inRange(hsv_blinker, lower_yellow, upper_yellow)
+
+    # 초록 마스크
+    mask_green = cv2.inRange(hsv_blinker, lower_green, upper_green)
+    
+    result_red = cv2.cvtColor(cv2.bitwise_and(hsv_blinker, hsv_blinker, mask=mask_red), cv2.COLOR_HSV2BGR)
+    result_yellow = cv2.cvtColor(cv2.bitwise_and(hsv_blinker, hsv_blinker, mask=mask_yellow), cv2.COLOR_HSV2BGR)
+    result_green = cv2.cvtColor(cv2.bitwise_and(hsv_blinker, hsv_blinker, mask=mask_green), cv2.COLOR_HSV2BGR)
+
+    RYG_pixels ={'red' : result_red,
+                'yellow' : result_yellow,
+                'green' : result_green}
+
+    color = calc_pixel(RYG_pixels)
+    return zoom_blinker, color
+
+#색깔 픽셀 수 계산
+def calc_pixel(pixels):
+    result = 0
+    color = None
+    if pixels is not None:
+        for col, pixel in pixels.items():
+            pixel = cv2.cvtColor(pixel, cv2.COLOR_BGR2GRAY)
+            count = cv2.countNonZero(pixel)
+            if result < count:
+                result = count
+                color = col
+    return color
+
+#차량 검출
+def find_safe_car(frame, mask):
+    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    masked_safe_car = cv2.bitwise_and(frame, mask)
+
 #사용자가 입력한 좌표대로 마스크 생성
 def make_mask(frame, coordinate):
     mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
@@ -53,6 +120,31 @@ def make_mask(frame, coordinate):
     cv2.fillPoly(mask, vertices, 255)
 
     return mask
+
+#마스크된 이미지 부분을 확대하기
+def zoom_mask(masked_image):
+    gray_mask = cv2.cvtColor(masked_image, cv2.COLOR_BGR2GRAY)
+
+# 마스크에서 가장 큰 사각형을 찾기 위한 컨투어 탐색
+    contours, _ = cv2.findContours(gray_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # 컨투어가 있는 경우
+    if contours:
+        # 가장 큰 컨투어의 바운딩 박스 계산
+        x, y, w, h = cv2.boundingRect(contours[0])
+
+        # 관심 영역(ROI) 추출
+        roi = masked_image[y:y+h, x:x+w]
+        scale_factor = 3
+        resized_roi = cv2.resize(roi, (w * scale_factor, h * scale_factor), interpolation=cv2.INTER_CUBIC)
+
+        blurred = cv2.GaussianBlur(resized_roi, (9, 9), 0)
+        # Unsharp Masking 적용
+        alpha = 1.5  # 선명도 조절 (1.0 이상으로 설정하면 더 선명해짐)
+        beta = -0.5  # 블러 정도 (0.0 이하로 설정하여 더 부드럽게)
+        unsharpened_image = cv2.addWeighted(resized_roi, alpha, blurred, beta, 0)
+        
+    return unsharpened_image
 
 #레이아웃에 아이콘 그리기
 def draw_icons(frame):
@@ -122,9 +214,6 @@ channel_height = main_height
 road_width = 600
 road_height = main_height
 
-blinker_width = 300
-blinker_height = 300
-
 #각 영역 보드
 _mainboard = np.zeros((main_height, main_width, 3), np.uint8)
 _funcboard = np.full((func_height, func_width, 3), 255, np.uint8)
@@ -136,7 +225,7 @@ _mainboard[0:600, 0:100] = _funcboard
 _mainboard[0:600, 700:1000] = _channelboard
 
 #카메라 연결 및 초기 설정 처리
-road_video_path = "Videos/v2.mp4"  
+road_video_path = "Videos/blinker.mp4"  
 
 # VideoCapture 객체 생성
 road_capture = cv2.VideoCapture(road_video_path)
@@ -165,32 +254,47 @@ while True:
     if mode == 0: #기본 모드
         pass
     elif mode == 1: #차선 선택 모드
-        pass
+        #좌표가 2개 이상이고 스페이스바를 눌렀을 경우
+        if 2 < len(coordinate) and key==32:
+            road_mask = make_mask(road_frame, coordinate)
+            mode = 0 #기본 모드로 초기화
+            coordinate.clear()
+            cv2.imshow("test1", road_mask)
     elif mode == 2: #신호등 선택 모드
-        pass 
+        if 2 < len(coordinate) and key==32:
+            blinker_mask = make_mask(road_frame, coordinate)
+            mode = 0 #기본 모드로 초기화 
+            coordinate.clear()
     elif mode == 3: #차량 선택 모드
-        pass
+        if 2 < len(coordinate) and key==32:
+            safe_car_mask_mask = make_mask(road_frame, coordinate)
+            mode = 0 #기본 모드로 초기화
+            coordinate.clear()
+            find_safe_car(road_frame, safe_car_mask)
     
     #좌표가 있을 경우 좌표 화면에 그리기
     if 0 < len(coordinate):
         road_frame = draw_coord(road_frame, coordinate)
     
-    #좌표가 2개 이상이고 스페이스바를 눌렀을 경우
-    if 2 < len(coordinate) and key==32:
-        road_mask = make_mask(road_frame, coordinate)
-        mode = 0 #기본 모드로 초기화
-        cv2.imshow("test", road_mask)
-
     #차선 마스크가 존재할 경우 차선 검출
     if road_mask is not None:
         road_frame = find_line(road_frame, road_mask)
+
+    #신호등 마스크가 존재할 경우 신호등 색상 문구 출력
+    if blinker_mask is not None:
+        blinker_frame, color = find_blinker(road_frame, blinker_mask)
+        _mainboard[0:150, 700:850] = cv2.resize(blinker_frame, (150, 150), interpolation=cv2.INTER_LINEAR)
+        if color is None:
+            put_string(road_frame, "Current Blinker : " , (10, 80), " ")   
+        else: 
+            put_string(road_frame, "Current Blinker : " , (10, 80), color)   
     
     #캐니 에지 검출 
     #edge = cv2.Canny(frame, 100, 150)
     #frame = cv2.bitwise_and(frame, frame, mask=edge)
     #frame = cv2.flip(frame, 1)  # 좌우 반전
 
-    put_string(road_frame, "Current Mode : " , (10, 50), mode_text[mode])   # 줌 값 표시
+    put_string(road_frame, "Current Mode : " , (10, 50), mode_text[mode])   
     _mainboard[0:600, 100:700] = road_frame
 
     cv2.imshow(title, _mainboard)
