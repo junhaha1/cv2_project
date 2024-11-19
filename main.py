@@ -31,7 +31,6 @@ def onMouse(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN: #좌표 선택
             if 100 <= x <= 700:
                 coordinate.append((x - 100, y)) 
-                print(len(coordinate))
         elif event == cv2.EVENT_RBUTTONDOWN: #좌표 선택 취소
             if len(coordinate) > 0:
                 coordinate.pop()
@@ -43,6 +42,8 @@ def find_line(frame, mask):
     gray_canny = cv2.Canny(blur, 50, 150)
 
     masked_edges = cv2.bitwise_and(gray_canny, mask)
+    masked_edges = unsharp_image(masked_edges, 1.5, -0.5)
+
     return draw_line(frame, masked_edges)
 
 #신호등 검출
@@ -177,7 +178,9 @@ def draw_line(frame, edge):
     if lines is not None:
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)  # 녹색 선 그리기
+            #기울기가 0.5이상인 선만 그리기  => 가로선 제외
+            if abs((y1 - y2) / (x1 - x2)) > 0.5:
+                cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)  # 녹색 선 그리기
     return frame
 
 #문자열 출력 함수
@@ -242,9 +245,9 @@ road_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, road_height)     # 카메라 프레�
 road_capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)          # 오토포커싱 중지
 road_capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
 
+
 while True:
     road_ret, road_frame = road_capture.read()                 # 카메라 영상 받기
-    #blinker_ret, blinker_frame = blinker_capture.read()                 # 카메라 영상 받기
     if not road_ret: break
 
     key = cv2.waitKeyEx(30)
