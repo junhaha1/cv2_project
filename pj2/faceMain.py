@@ -2,13 +2,28 @@ import cv2
 import numpy as np
 
 
+def put_string(frame, text, pt, value, color=(120, 200, 90)):             # 문자열 출력 함수 - 그림자 효과
+    text += str(value)
+    shade = (pt[0] + 2, pt[1] + 2)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(frame, text, shade, font, 0.7, (0, 0, 0), 2)  # 그림자 효과
+    cv2.putText(frame, text, pt, font, 0.7, (120, 200, 90), 2)  # 글자 적기
+
 #모션을 캡쳐
     #사용 로직
     #엄지 검지 중심 위치까지 직선 그리기
     #직선이 일정 수준보다 길어질 때 확대 처리
     #직선이 일정 수준보다 짧아질 때 축소 처리
-def process_motion(frame, distance, fingers):
-    pass
+def zoomInCheck(distance, initial_distance, max_scale_reached):
+    if distance > initial_distance: #현재 길이가 초기 길이보다 길 경우 -> 확대
+        scale_factor = (distance - initial_distance) / 200.0
+        current_scale = min(max(min_scale + scale_factor, min_scale), max_scale)
+
+        if current_scale > max_scale_reached:
+            max_scale_reached = current_scale
+        
+    return max_scale_reached
+
 
 def calc_dist(fingers):
     f1 = fingers[0] #엄지
@@ -52,11 +67,6 @@ def tracking_green(frame, fingers):
     return frame, fingers
 
 
-def onMouse(event, x, y, flags, param):
-    #모드 선택
-    if event == cv2.EVENT_LBUTTONDOWN: 
-        print(x, y)
-
 capture = cv2.VideoCapture(0)								# 0번 카메라 연결
 if capture.isOpened() is None: raise Exception("카메라 연결 안됨")
 
@@ -67,10 +77,18 @@ capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
 
 title = "Main Camera"              # 윈도우 이름 지정
 cv2.namedWindow(title)                          # 윈도우 생성 - 반드시 생성 해야함
-cv2.setMouseCallback(title, onMouse)
 
 fingers = [] #0: 엄지, 1: 검지
-distance = -1
+distance = 0
+
+initial_distance = 150 #초기 기준 길이
+max_scale = 2.0  # 최대 확대 비율
+min_scale = 0.5  # 최소 확대 비율
+current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
+max_scale_reached = 1.0  # 지금까지의 최대 확대 비율을 저장
+
+
+
 while True:
     ret, frame = capture.read()                 # 카메라 영상 받기
     if not ret: break
@@ -78,10 +96,22 @@ while True:
 
     frame = cv2.flip(frame, 1) #좌우반전
 
+    frame, fingers = tracking_green(frame.copy(), fingers)
     if len(fingers) == 2:
         distance = calc_dist(fingers)
-    frame, fingers = tracking_green(frame.copy(), fingers)
-    print(fingers)
-    cv2.imshow(title, cv2.flip(frame, 1))
+        cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
+        max_scale_reached = zoomInCheck(distance, initial_distance, max_scale_reached)
+
+        resized_image = cv2.resize(frame, None, fx=max_scale_reached, fy=max_scale_reached, interpolation=cv2.INTER_LINEAR)
+
+        # 확대된 이미지 중앙에 표시
+        h, w, _ = resized_image.shape
+        frame = resized_image
+
+    elif len(fingers) < 2:
+        distance = 0
+    
+    put_string(frame, "distance : " , (10, 50), distance)   # 줌 값 표시
+    cv2.imshow(title, frame)
 
 capture.release()
