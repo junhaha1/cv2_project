@@ -14,34 +14,79 @@ def put_string(frame, text, pt, value, color=(120, 200, 90)):             # 문�
     #엄지 검지 중심 위치까지 직선 그리기
     #직선이 일정 수준보다 길어질 때 확대 처리
     #직선이 일정 수준보다 짧아질 때 축소 처리
-def zoomInCheck(distance, initial_distance, max_scale_reached):
-    if distance > initial_distance: #현재 길이가 초기 길이보다 길 경우 -> 확대
-        scale_factor = (distance - initial_distance) / 200.0
-        current_scale = min(max(min_scale + scale_factor, min_scale), max_scale)
 
-        if current_scale > max_scale_reached:
-            max_scale_reached = current_scale
+#확대
+max_scale = 2.0  # 최대 확대 비율
+min_scale = 0.5  # 최소 확대 비율
+
+def calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, current_distance, current_scale, min_scale, max_scale, smooth_factor, threshold):
+    """
+    초기 거리와 현재 거리, 확대 비율에 따라 이미지를 확대/축소하는 함수
+
+    :param image: 원본 이미지
+    :param initial_distance: 초기 거리 (보정 전)
+    :param current_distance: 현재 거리
+    :param current_scale: 현재 확대 비율
+    :param min_scale: 최소 확대 비율
+    :param max_scale: 최대 확대 비율
+    :param smooth_factor: 부드러운 변화 비율
+    :return: 조정된 이미지와 업데이트된 확대 비율
+    """
+    # 초기 거리 보정 (확대 비율로 원래 거리 복원)
+    adjusted_zoomin_initial_distance = zoomin_initial_distance * current_scale
+    adjusted_zoomout_initial_distance = zoomout_initial_distance * current_scale
+
+    if current_scale > 1:
+        in_threshold = threshold * current_scale
+        out_threshold = threshold / (current_scale * 10)
+    else:
+        in_threshold = threshold / current_scale
+        out_threshold = threshold * (current_scale / 10)
+
+    if current_distance > adjusted_zoomin_initial_distance and (current_distance - adjusted_zoomin_initial_distance) > in_threshold:
+        #scale_factor = max((current_distance - adjusted_zoomin_initial_distance) / 200.0, 0)
+        #target_scale = min(max(min_scale + scale_factor, min_scale), max_scale)
         
-    return max_scale_reached
+        scale_factor = (current_distance - adjusted_zoomin_initial_distance) / 200.0
+        # 현재 확대 비율을 목표 확대 비율로 점진적으로 따라가기
+        updated_scale = min(current_scale + scale_factor * smooth_factor, max_scale)
+
+    elif adjusted_zoomout_initial_distance > current_distance and (adjusted_zoomout_initial_distance - current_distance) > out_threshold:
+        scale_factor = (current_distance - adjusted_zoomout_initial_distance) / 200.0
+        # 현재 확대 비율을 목표 확대 비율로 점진적으로 따라가기
+        updated_scale = max(current_scale + scale_factor * smooth_factor, min_scale)
+    else:
+        updated_scale = current_scale
+
+    return updated_scale, in_threshold, out_threshold
 
 
 def calc_dist(fingers):
     f1 = fingers[0] #엄지
     f2 = fingers[1] #검지
 
-    dx = (f1[1] - f1[0]) ** 2
-    dy = (f2[1] - f2[0]) ** 2
+    dx = (f1[0] - f2[0]) ** 2
+    dy = (f1[1] - f2[1]) ** 2
     distance = int((dx + dy) ** 0.5)
     return distance
 
 #화면에 초록색 영역을 추적
 def tracking_green(frame, fingers):
-    lower_green = np.array([40, 50, 50])  # 초록색 범위의 하한값
-    upper_green = np.array([80, 255, 255])  # 초록색 범위의 상한값
+    lower_green = np.array([35, 30, 30])  # 초록색 범위의 하한값
+    upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
 
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    image = cv2.GaussianBlur(frame.copy(), (5,5), 0)
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     # 초록색 범위에 해당하는 마스크 생성
     mask = cv2.inRange(hsv, lower_green, upper_green)
+
+    #닫힘 연산을 통해 노이즈를 제거하기
+    open_mask = np.array([[0,1,0],
+                        [1,1,1],
+                        [0,1,0]]).astype('uint8')
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, open_mask) 
+
     # 마스크에 대해 윤곽선을 찾기
     contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -55,7 +100,7 @@ def tracking_green(frame, fingers):
         ((x, y), radius) = cv2.minEnclosingCircle(contour)
 
         # 반지름이 일정 크기 이상일 때만 처리
-        if radius > 10:
+        if radius > 7:
             # 원의 중심 좌표 출력
             center = (int(x), int(y))
             fingers.append(center)
@@ -80,38 +125,49 @@ cv2.namedWindow(title)                          # 윈도우 생성 - 반드시 �
 
 fingers = [] #0: 엄지, 1: 검지
 distance = 0
+zoomin_initial_distance = 150
+zoomout_initial_distance = 100
 
-initial_distance = 150 #초기 기준 길이
-max_scale = 2.0  # 최대 확대 비율
-min_scale = 0.5  # 최소 확대 비율
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
-max_scale_reached = 1.0  # 지금까지의 최대 확대 비율을 저장
+target_scale = 1.0  # 목표 확대 비율
+smooth_factor = 0.1  # 부드러운 변화 비율 (0.0~1.0, 낮을수록 느리게 반응)
 
-
-
+_in = None
+_out = None
 while True:
     ret, frame = capture.read()                 # 카메라 영상 받기
     if not ret: break
-    if cv2.waitKey(30) >= 0: break
+    key = cv2.waitKey(30)
+    if key == ord('q') or key == 27 : break
 
     frame = cv2.flip(frame, 1) #좌우반전
 
+    if current_scale > 1:
+        frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_CUBIC)
+    elif current_scale < 1:
+        frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_LINEAR)
+
     frame, fingers = tracking_green(frame.copy(), fingers)
-    if len(fingers) == 2:
+    if len(fingers) >= 2:
+
         distance = calc_dist(fingers)
+        #초기 거리 설정
         cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
-        max_scale_reached = zoomInCheck(distance, initial_distance, max_scale_reached)
 
-        resized_image = cv2.resize(frame, None, fx=max_scale_reached, fy=max_scale_reached, interpolation=cv2.INTER_LINEAR)
-
-        # 확대된 이미지 중앙에 표시
-        h, w, _ = resized_image.shape
-        frame = resized_image
-
+        current_scale, _in, _out = calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, 50)
+        
+        # 이미지 확대/축소
     elif len(fingers) < 2:
+        fingers.clear()
         distance = 0
-    
-    put_string(frame, "distance : " , (10, 50), distance)   # 줌 값 표시
+
+    put_string(frame, "distance : " , (10, 30), distance)   # 줌 값 표시
+    put_string(frame, "limit zoom In : " , (10, 50), zoomin_initial_distance * current_scale)   # 줌 값 표시
+    put_string(frame, "limit zoom Out : " , (10, 70), zoomout_initial_distance * current_scale)   # 줌 값 표시
+    put_string(frame, "current_scale : " , (10, 90), current_scale)
+    put_string(frame, "_in : " , (10, 110), _in)
+    put_string(frame, "_out : " , (10, 130), _out)
+
     cv2.imshow(title, frame)
 
 capture.release()
