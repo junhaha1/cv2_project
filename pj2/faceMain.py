@@ -1,4 +1,5 @@
 import cv2
+import time 
 import numpy as np
 
 
@@ -44,9 +45,6 @@ def calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance
         out_threshold = threshold * (current_scale / 10)
 
     if current_distance > adjusted_zoomin_initial_distance and (current_distance - adjusted_zoomin_initial_distance) > in_threshold:
-        #scale_factor = max((current_distance - adjusted_zoomin_initial_distance) / 200.0, 0)
-        #target_scale = min(max(min_scale + scale_factor, min_scale), max_scale)
-        
         scale_factor = (current_distance - adjusted_zoomin_initial_distance) / 200.0
         # 현재 확대 비율을 목표 확대 비율로 점진적으로 따라가기
         updated_scale = min(current_scale + scale_factor * smooth_factor, max_scale)
@@ -137,6 +135,8 @@ def tracking_green(frame, fingers):
     return frame, fingers
 
 
+
+
 capture = cv2.VideoCapture(0)								# 0번 카메라 연결
 if capture.isOpened() is None: raise Exception("카메라 연결 안됨")
 
@@ -148,7 +148,7 @@ capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
 title = "Main Camera"              # 윈도우 이름 지정
 cv2.namedWindow(title)                          # 윈도우 생성 - 반드시 생성 해야함
 
-mode_name = ["common", "move"]
+mode_name = ["common", "zoom", "move"]
 mode = 0
 
 fingers = [] #0: 엄지, 1: 검지
@@ -163,26 +163,44 @@ frame_width = 640
 frame_height = 360
 
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
-target_scale = 1.0  # 목표 확대 비율
-smooth_factor = 0.1  # 부드러운 변화 비율 (0.0~1.0, 낮을수록 느리게 반응)
 
 _in = None
 _out = None
 
 move_x, move_y = 0,0
 
+SPEED_THRESHOLD = 20
+current_time = None
+previous_time = None
+current_finger_position = None
+previous_finger_position = None
+
 _mainboard = np.zeros((main_height, main_width, 3), np.uint8)
+
 while True:
     ret, frame = capture.read()                 # 카메라 영상 받기
     if not ret: break
 
+    #키보드를 통한 모드 설정
     key = cv2.waitKey(30)
     if key == ord('q') or key == 27: 
         break
-    elif key == ord('m'):
-        mode = 1
-    elif key == ord('c'):
+    elif key == ord('r'):
+        move_x, move_y = 0,0
+        current_scale = 1.0
         mode = 0
+    elif key == ord('c'):
+        fingers.clear()
+        distance = 0
+        mode = 0
+    elif key == ord('z'):
+        fingers.clear()
+        distance = 0
+        mode = 1
+    elif key == ord('m'):
+        fingers.clear()
+        distance = 0
+        mode = 2
 
     frame = cv2.flip(frame, 1) #좌우반전
 
@@ -191,23 +209,54 @@ while True:
     elif current_scale < 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_LINEAR)
 
-    frame, fingers = tracking_green(frame.copy(), fingers)
-    if len(fingers) >= 2:
+    if mode == 1:
+        frame, fingers = tracking_green(frame.copy(), fingers)
 
-        distance = calc_dist(fingers)
-        #초기 거리 설정
-        cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
-        current_scale, _in, _out = calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, 50)
+        if len(fingers) >= 2:
 
-        if current_scale != 1.0:
-            #좌표 보정하기
-            move_x, move_y= correct_location(fingers, current_scale, frame_width, frame_height)
+            distance = calc_dist(fingers)
+            #초기 거리 설정
+            cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
+            current_scale, _in, _out = calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, 50)
 
-        # 이미지 확대/축소
-    elif len(fingers) < 2:
-        fingers.clear()
-        distance = 0
+            if current_scale != 1.0:
+                #좌표 보정하기
+                move_x, move_y= correct_location(fingers, current_scale, frame_width, frame_height)
 
+            # 이미지 확대/축소
+        elif len(fingers) < 2:
+            fingers.clear()
+            distance = 0
+    elif mode == 2 and current_scale > 1.0: #이동 모드 
+        frame, fingers = tracking_green(frame.copy(), fingers)
+        if len(fingers) >= 1:
+            current_finger_position = fingers[0]
+            current_time = time.time()
+
+            print("current_time = ", current_time)
+            print("previous_time = ", previous_time)
+
+            if previous_time is not None and previous_finger_position is not None:
+                dx = current_finger_position[0] - previous_finger_position[0]
+                dy = current_finger_position[1] - previous_finger_position[1]
+                time_diff = (current_time - previous_time) * 1000  # 밀리초(ms) 단위로 시간 차이 계산
+
+                # 속도 계산 (픽셀/ms)
+                speed = ((dx ** 2 + dy ** 2) ** 0.5) / time_diff if time_diff > 0 else 0
+                print("speed=", speed)
+                # 속도가 임계값을 넘는 경우에만 이동 처리
+                if speed * 10 > SPEED_THRESHOLD:
+                    # 이동 좌표 업데이트
+                    move_x = max(0, min(move_x - dx, frame.shape[1] - frame_width))
+                    move_y = max(0, min(move_y - dy, frame.shape[0] - frame_height))
+
+            # 현재 검지 좌표와 시간을 이전 값으로 갱신
+            previous_finger_position = current_finger_position
+            previous_time = current_time
+        else:
+            previous_finger_position = None
+            previous_time = None
+            
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
     frame = move_frame
 
