@@ -61,7 +61,8 @@ def calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance
     return updated_scale, in_threshold, out_threshold
 
 
-def calc_dist(fingers):
+#엄지와 검지의 거리 계산
+def calc_dist(fingers): 
     f1 = fingers[0] #엄지
     f2 = fingers[1] #검지
 
@@ -69,6 +70,30 @@ def calc_dist(fingers):
     dy = (f1[1] - f2[1]) ** 2
     distance = int((dx + dy) ** 0.5)
     return distance
+
+#엄지와 검지의 중점의 좌표 계산
+def calc_center(fingers):
+    f1 = fingers[0] #엄지
+    f2 = fingers[1] #검지
+
+    center_x = (f1[0] + f2[0]) // 2
+    center_y = (f1[1] + f2[1]) // 2
+
+    return (center_x, center_y)
+
+#확대, 축소시에 좌표 보정
+def correct_location(fingers, current_scale, initial_width, initial_height):
+    center_x, center_y = calc_center(fingers)
+    new_center_x, new_center_y = int(center_x * current_scale), int(center_y * current_scale) 
+    new_width, new_height = int(initial_width * current_scale), int(initial_height * current_scale)
+
+    move_x = min((new_center_x - center_x), (new_width - initial_width))
+    move_y = min((new_center_y - center_y), (new_height - initial_height))
+
+    if move_x < 0: move_x = 0
+    if move_y < 0: move_y = 0
+
+    return (move_x, move_y)
 
 #화면에 초록색 영역을 추적
 def tracking_green(frame, fingers):
@@ -123,10 +148,19 @@ capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
 title = "Main Camera"              # 윈도우 이름 지정
 cv2.namedWindow(title)                          # 윈도우 생성 - 반드시 생성 해야함
 
+mode_name = ["common", "move"]
+mode = 0
+
 fingers = [] #0: 엄지, 1: 검지
 distance = 0
 zoomin_initial_distance = 150
 zoomout_initial_distance = 100
+
+main_width = 800
+main_height = 500
+
+frame_width = 640
+frame_height = 360
 
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
 target_scale = 1.0  # 목표 확대 비율
@@ -134,11 +168,21 @@ smooth_factor = 0.1  # 부드러운 변화 비율 (0.0~1.0, 낮을수록 느리�
 
 _in = None
 _out = None
+
+move_x, move_y = 0,0
+
+_mainboard = np.zeros((main_height, main_width, 3), np.uint8)
 while True:
     ret, frame = capture.read()                 # 카메라 영상 받기
     if not ret: break
+
     key = cv2.waitKey(30)
-    if key == ord('q') or key == 27 : break
+    if key == ord('q') or key == 27: 
+        break
+    elif key == ord('m'):
+        mode = 1
+    elif key == ord('c'):
+        mode = 0
 
     frame = cv2.flip(frame, 1) #좌우반전
 
@@ -153,21 +197,36 @@ while True:
         distance = calc_dist(fingers)
         #초기 거리 설정
         cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
-
         current_scale, _in, _out = calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, 50)
-        
+
+        if current_scale != 1.0:
+            #좌표 보정하기
+            move_x, move_y= correct_location(fingers, current_scale, frame_width, frame_height)
+
         # 이미지 확대/축소
     elif len(fingers) < 2:
         fingers.clear()
         distance = 0
 
+    move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
+    frame = move_frame
+
     put_string(frame, "distance : " , (10, 30), distance)   # 줌 값 표시
-    put_string(frame, "limit zoom In : " , (10, 50), zoomin_initial_distance * current_scale)   # 줌 값 표시
-    put_string(frame, "limit zoom Out : " , (10, 70), zoomout_initial_distance * current_scale)   # 줌 값 표시
+    put_string(frame, "limit zoom In : " , (10, 50), zoomin_initial_distance * current_scale)   #  줌 기준 값 표시
+    put_string(frame, "limit zoom Out : " , (10, 70), zoomout_initial_distance * current_scale)   # 축소 기준 값 표시
     put_string(frame, "current_scale : " , (10, 90), current_scale)
     put_string(frame, "_in : " , (10, 110), _in)
     put_string(frame, "_out : " , (10, 130), _out)
+    put_string(frame, "mode : " , (10, 150), mode_name[mode])
 
-    cv2.imshow(title, frame)
+    _mainboard.fill(255)
+    if frame.shape[0] >= frame_height and frame.shape[1] >= frame_width:
+        _mainboard[0:frame_height, 0:frame_width] = frame
+    elif frame.shape[0] < frame_height and frame.shape[1] < frame_width:
+        _mainboard[0:frame.shape[0], 0:frame.shape[1]] = frame
+
+    cv2.imshow(title, _mainboard)
+    #cv2.imshow("test main2", _mainboard)
+
 
 capture.release()
