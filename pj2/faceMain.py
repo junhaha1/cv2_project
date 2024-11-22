@@ -58,16 +58,28 @@ def calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance
 
     return updated_scale, in_threshold, out_threshold
 
-    #이동 시에 좌표 보정
-def correct_move_location(speed, move_x, move_y, dx, dy, frame, frame_width, frame_height, threshold):
-        # 속도가 임계값을 넘는 경우에만 이동 처리
-    limit = 0.5
-    if speed > threshold:
-        # 이동 좌표 업데이트
-        move_x = max(0, min(move_x - (dx * speed * limit), frame.shape[1] - frame_width))
-        move_y = max(0, min(move_y - (dy * speed * limit), frame.shape[0] - frame_height))
+#이동 시에 화면 이동 좌표 보정
+def correct_move_location(move_x, move_y, dx, dy, frame_width, frame_height, threshold):
+    if abs(dx) > threshold:
+        move_x = max(0, min(move_x - dx, frame.shape[1] - frame_width))
+    if abs(dy) > threshold:
+        move_y = max(0, min(move_y - dy, frame.shape[0] - frame_height))
 
     return int(move_x), int(move_y)
+
+#확대, 축소시에 좌표 보정
+def correct_location(fingers, current_scale, initial_width, initial_height):
+    center_x, center_y = calc_center(fingers)
+    new_center_x, new_center_y = int(center_x * current_scale), int(center_y * current_scale) 
+    new_width, new_height = int(initial_width * current_scale), int(initial_height * current_scale)
+
+    move_x = min((new_center_x - center_x), (new_width - initial_width))
+    move_y = min((new_center_y - center_y), (new_height - initial_height))
+
+    if move_x < 0: move_x = 0
+    if move_y < 0: move_y = 0
+
+    return (move_x, move_y)
 
 #계산 관련 함수
 #엄지와 검지의 거리 계산
@@ -89,29 +101,6 @@ def calc_center(fingers):
     center_y = (f1[1] + f2[1]) // 2
 
     return (center_x, center_y)
-
-#검지 이동 속도 계산
-def calc_speed(dx, dy, current_time, previous_time):
-    time_diff = (current_time - previous_time) * 1000  # 밀리초(ms) 단위로 시간 차이 계산
-
-    # 속도 계산 (픽셀/ms)
-    speed = (((dx ** 2 + dy ** 2) ** 0.5) / time_diff) * 10
-
-    return speed
-
-#확대, 축소시에 좌표 보정
-def correct_location(fingers, current_scale, initial_width, initial_height):
-    center_x, center_y = calc_center(fingers)
-    new_center_x, new_center_y = int(center_x * current_scale), int(center_y * current_scale) 
-    new_width, new_height = int(initial_width * current_scale), int(initial_height * current_scale)
-
-    move_x = min((new_center_x - center_x), (new_width - initial_width))
-    move_y = min((new_center_y - center_y), (new_height - initial_height))
-
-    if move_x < 0: move_x = 0
-    if move_y < 0: move_y = 0
-
-    return (move_x, move_y)
 
 #화면에 초록색 영역을 추적
 def tracking_green(frame, fingers):
@@ -153,7 +142,6 @@ def tracking_green(frame, fingers):
             cv2.circle(frame, center,  int(radius), (0, 0, 255), 2)
 
     return frame, fingers
-
 
 
 capture = cv2.VideoCapture(0)								# 0번 카메라 연결
@@ -210,6 +198,7 @@ while True:
         mode = 0
     elif key == ord('c'):
         fingers.clear()
+        previous_finger_position = None
         distance = 0
         mode = 0
     elif key == ord('z'):
@@ -252,21 +241,16 @@ while True:
         frame, fingers = tracking_green(frame.copy(), fingers)
         if len(fingers) >= 1:
             current_finger_position = fingers[0]
-            current_time = time.time()
-            #속도 계산하여 좌표 수정
-            if previous_time is not None and previous_finger_position is not None:
+            
+            if previous_finger_position is not None:
                 dx = current_finger_position[0] - previous_finger_position[0]
                 dy = current_finger_position[1] - previous_finger_position[1]
-
-                speed = calc_speed(dx, dy, current_time, previous_time)
-                move_x, move_y = correct_move_location(speed, move_x, move_y, dx, dy, frame, frame_width, frame_height, SPEED_THRESHOLD)
+                move_x, move_y = correct_move_location(move_x, move_y, dx, dy, frame_width, frame_height, 10)
 
             # 현재 검지 좌표와 시간을 이전 값으로 갱신
             previous_finger_position = current_finger_position
-            previous_time = current_time
         else:
             previous_finger_position = None
-            previous_time = None
             
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
     frame = move_frame

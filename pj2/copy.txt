@@ -1,0 +1,12 @@
+print("--------------")
+        print("zoom in")
+        print(scale_factor)
+        print(target_scale)
+        print(target_scale - current_scale)
+        print(updated_scale)
+        print("--------------")
+
+if frame.shape[0] > initial_height and frame.shape[1] > initial_width:
+        _mainboard[0:initial_height, 0:initial_width] = frame[100:initial_height + 100, 100:initial_width + 100]
+    else:
+        _mainboard[0:frame.shape[0], 0:frame.shape[1]] = frame

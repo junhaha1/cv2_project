@@ -35,6 +35,25 @@ def onMouse(event, x, y, flags, param):
             if len(coordinate) > 0:
                 coordinate.pop()
 
+#차선 찾기 알고리즘 2
+def find_line2(frame, mask2):
+    hls = cv2.cvtColor(frame, cv2.COLOR_BGR2HLS)
+
+    lower = np.array([20, 150, 20])
+    upper = np.array([255, 255, 255])
+
+    yellow_lower = np.array([0, 85, 81])
+    yellow_upper = np.array([190, 255, 255])
+
+    yellow_mask = cv2.inRange(hls, yellow_lower, yellow_upper)
+    white_mask = cv2.inRange(hls, lower, upper)
+    mask = cv2.bitwise_or(yellow_mask, white_mask)
+    masked = cv2.bitwise_and(frame, frame, mask = mask)
+
+    masked_img = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
+    masked_img = cv2.bitwise_and(masked_img, masked_img, mask = mask2)
+    return masked_img
+
 #차선 찾기
 def find_line(frame, mask):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -232,7 +251,7 @@ _mainboard[0:600, 0:100] = _funcboard
 _mainboard[0:600, 700:1000] = _channelboard
 
 #카메라 연결 및 초기 설정 처리
-road_video_path = "Videos/main_road.mp4"  
+road_video_path = "Videos/v2.mp4"  
 
 # VideoCapture 객체 생성
 road_capture = cv2.VideoCapture(road_video_path)
@@ -256,6 +275,8 @@ while True:
     #노트북 내장 카메라가 너비와 높이 설정이 적용 안돼서 받아온 frame을 직접 사이즈 조정
     if road_frame.shape[0] != road_height or road_frame.shape[1] != road_width:
         road_frame = cv2.resize(road_frame, (600, 600), interpolation=cv2.INTER_CUBIC)
+
+    
 
     #메인 프레임 모드별 활성화
     if mode == 0: #기본 모드
@@ -286,6 +307,7 @@ while True:
     #차선 마스크가 존재할 경우 차선 검출
     if len(road_mask) > 0:
         for mask in road_mask:
+            cv2.imshow("test2", find_line2(road_frame, mask))
             road_frame = find_line(road_frame, mask)
 
     #신호등 마스크가 존재할 경우 신호등 색상 문구 출력
