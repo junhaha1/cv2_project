@@ -1,14 +1,12 @@
 import cv2
-import time 
 import numpy as np
 
-
-def put_string(frame, text, pt, value="", color=(120, 200, 90)):             # 문자열 출력 함수 - 그림자 효과
+def put_string(frame, text, pt, value="", color=(120, 200, 90), size=0.7):             # 문자열 출력 함수 - 그림자 효과
     text += str(value)
     shade = (pt[0] + 2, pt[1] + 2)
     font = cv2.FONT_HERSHEY_SIMPLEX
     #cv2.putText(frame, text, shade, font, 0.7, (0, 0, 0), 2)  # 그림자 효과
-    cv2.putText(frame, text, pt, font, 0.7, color, 2)  # 글자 적기
+    cv2.putText(frame, text, pt, font, size, color, 2)  # 글자 적기
 
 def calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, current_distance, current_scale, min_scale, max_scale, smooth_factor, threshold):
     # 초기 거리 보정 (확대 비율로 원래 거리 복원)
@@ -165,8 +163,9 @@ MOVE_THRESHOLD = 10 #화면 이동 시 임계치
 current_finger_position = None
 previous_finger_position = None
 
-mask = None
+blured_mask = None
 blured_frame = None
+blured_size = 10
 
 lower_green = np.array([35, 50, 50])  # 초록색 범위의 하한값
 upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
@@ -185,8 +184,9 @@ while True:
         move_x, move_y = 0,0
         current_scale = 1.0
         mode = 0
-        mask = None
+        blured_mask = None
         blured_frame = None
+        blured_size = 10
     elif key == ord('c'):
         fingers.clear()
         previous_finger_position = None
@@ -204,8 +204,14 @@ while True:
         fingers.clear()
         distance = 0
         mode = 3
-
+    elif key == ord('u'):
+        blured_size = min(blured_size + 1, 100)
+    elif key == ord('d'):
+        blured_size = max(blured_size - 1, 1)
+    
+    #초반 기본 화면들 설정
     frame = cv2.flip(frame, 1) #좌우반전
+    _mainboard.fill(255)
 
     if current_scale > 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_CUBIC)
@@ -233,7 +239,7 @@ while True:
             distance = 0
     #화면 이동 모드 => 화면이 확대되었을 때에만 작동
     elif mode == 2 and current_scale > 1.0:
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green)
+        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=15)
         if len(fingers) == 1:
             current_finger_position = fingers[0]
             
@@ -246,20 +252,24 @@ while True:
             previous_finger_position = current_finger_position
         else:
             previous_finger_position = None
-
-    elif mode == 3: #블러링 
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius = 10)
-        if mask is None: #마스크가 없을 경우 초기화
-            mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+    #블러링 => 블러링을 적용할 마스크만 생성
+    elif mode == 3: 
+        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius = blured_size)
+        put_string(_mainboard, "Blur Size : ", (_mainboard.shape[1] // 2, 55), blured_size, color=(0, 0, 0), size=0.6)
+        put_string(_mainboard, "'u' : Blur Size UP ", (_mainboard.shape[1] // 2, 15), color=(255, 0, 0), size=0.6)
+        put_string(_mainboard, "'d' : Blur Size DOWN ", (_mainboard.shape[1] // 2, 35), color=(0, 0, 255), size=0.6)
+        if blured_mask is None: #마스크가 없을 경우 초기화
+            blured_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
         if len(fingers) == 1:
             center = fingers[0]
-            mask = tracking_mask(mask, center[0], center[1], 10)
-            
-    if mask is not None:
-        mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
-        target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=mask)
+            blured_mask = tracking_mask(blured_mask, center[0], center[1], blured_size)
+    
+    #마스크가 있을 경우 해당 마스크를 계속 적용시켜주기
+    if blured_mask is not None:
+        blured_mask = cv2.resize(blured_mask, (frame.shape[1], frame.shape[0]))
+        target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
         blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
-        frame[mask > 0] = blured_frame[mask > 0]
+        frame[blured_mask > 0] = blured_frame[blured_mask > 0]
 
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
 
@@ -282,11 +292,11 @@ while True:
     # _mainboard 중앙에 frame 배치
     end_y = min(start_y + move_frame.shape[0], _mainboard.shape[0])
     end_x = min(start_x + move_frame.shape[1], _mainboard.shape[1])
-    _mainboard.fill(255)
 
-    put_string(_mainboard, "distance : ", (180, 20), distance, color=(0,0,0))  # 줌 값 표시
-    put_string(_mainboard, "mode : ", (180, 50), mode_name[mode], color=(255, 0,0))
-    put_string(_mainboard, "current_scale : ", (_mainboard_center_x, 50), round(current_scale, 2), color=(0, 0, 255))
+    put_string(_mainboard, "distance : ", (180, 15), distance, color=(0,0,0), size=0.6) 
+    put_string(_mainboard, "mode : ", (180, 35), mode_name[mode], color=(255, 0,0), size=0.6)
+    put_string(_mainboard, "current_scale : ", (180, 55), round(current_scale, 2), color=(0, 0, 255), size=0.6)
+    
 
     #put_string(_mainboard, "limit zoom In : ", (10, 50), round(zoomin_initial_distance * current_scale, 2))  # 줌 기준 값 표시
     #put_string(_mainboard, "limit zoom Out : ", (10, 70), round(zoomout_initial_distance * current_scale, 2))  # 축소 기준 값 표시
