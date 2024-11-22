@@ -58,7 +58,18 @@ def calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance
 
     return updated_scale, in_threshold, out_threshold
 
+    #이동 시에 좌표 보정
+def correct_move_location(speed, move_x, move_y, dx, dy, frame, frame_width, frame_height, threshold):
+        # 속도가 임계값을 넘는 경우에만 이동 처리
+    limit = 0.5
+    if speed > threshold:
+        # 이동 좌표 업데이트
+        move_x = max(0, min(move_x - (dx * speed * limit), frame.shape[1] - frame_width))
+        move_y = max(0, min(move_y - (dy * speed * limit), frame.shape[0] - frame_height))
 
+    return int(move_x), int(move_y)
+
+#계산 관련 함수
 #엄지와 검지의 거리 계산
 def calc_dist(fingers): 
     f1 = fingers[0] #엄지
@@ -79,6 +90,15 @@ def calc_center(fingers):
 
     return (center_x, center_y)
 
+#검지 이동 속도 계산
+def calc_speed(dx, dy, current_time, previous_time):
+    time_diff = (current_time - previous_time) * 1000  # 밀리초(ms) 단위로 시간 차이 계산
+
+    # 속도 계산 (픽셀/ms)
+    speed = (((dx ** 2 + dy ** 2) ** 0.5) / time_diff) * 10
+
+    return speed
+
 #확대, 축소시에 좌표 보정
 def correct_location(fingers, current_scale, initial_width, initial_height):
     center_x, center_y = calc_center(fingers)
@@ -95,7 +115,7 @@ def correct_location(fingers, current_scale, initial_width, initial_height):
 
 #화면에 초록색 영역을 추적
 def tracking_green(frame, fingers):
-    lower_green = np.array([35, 30, 30])  # 초록색 범위의 하한값
+    lower_green = np.array([35, 50, 50])  # 초록색 범위의 하한값
     upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
 
     image = cv2.GaussianBlur(frame.copy(), (5,5), 0)
@@ -123,7 +143,7 @@ def tracking_green(frame, fingers):
         ((x, y), radius) = cv2.minEnclosingCircle(contour)
 
         # 반지름이 일정 크기 이상일 때만 처리
-        if radius > 7:
+        if radius > 10:
             # 원의 중심 좌표 출력
             center = (int(x), int(y))
             fingers.append(center)
@@ -133,7 +153,6 @@ def tracking_green(frame, fingers):
             cv2.circle(frame, center,  int(radius), (0, 0, 255), 2)
 
     return frame, fingers
-
 
 
 
@@ -209,6 +228,7 @@ while True:
     elif current_scale < 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_LINEAR)
 
+    #확대&축소 모드
     if mode == 1:
         frame, fingers = tracking_green(frame.copy(), fingers)
 
@@ -227,28 +247,19 @@ while True:
         elif len(fingers) < 2:
             fingers.clear()
             distance = 0
-    elif mode == 2 and current_scale > 1.0: #이동 모드 
+    #화면 이동 모드 => 화면이 확대되었을 때에만 작동
+    elif mode == 2 and current_scale > 1.0:
         frame, fingers = tracking_green(frame.copy(), fingers)
         if len(fingers) >= 1:
             current_finger_position = fingers[0]
             current_time = time.time()
-
-            print("current_time = ", current_time)
-            print("previous_time = ", previous_time)
-
+            #속도 계산하여 좌표 수정
             if previous_time is not None and previous_finger_position is not None:
                 dx = current_finger_position[0] - previous_finger_position[0]
                 dy = current_finger_position[1] - previous_finger_position[1]
-                time_diff = (current_time - previous_time) * 1000  # 밀리초(ms) 단위로 시간 차이 계산
 
-                # 속도 계산 (픽셀/ms)
-                speed = ((dx ** 2 + dy ** 2) ** 0.5) / time_diff if time_diff > 0 else 0
-                print("speed=", speed)
-                # 속도가 임계값을 넘는 경우에만 이동 처리
-                if speed * 10 > SPEED_THRESHOLD:
-                    # 이동 좌표 업데이트
-                    move_x = max(0, min(move_x - dx, frame.shape[1] - frame_width))
-                    move_y = max(0, min(move_y - dy, frame.shape[0] - frame_height))
+                speed = calc_speed(dx, dy, current_time, previous_time)
+                move_x, move_y = correct_move_location(speed, move_x, move_y, dx, dy, frame, frame_width, frame_height, SPEED_THRESHOLD)
 
             # 현재 검지 좌표와 시간을 이전 값으로 갱신
             previous_finger_position = current_finger_position
@@ -268,14 +279,12 @@ while True:
     put_string(frame, "_out : " , (10, 130), _out)
     put_string(frame, "mode : " , (10, 150), mode_name[mode])
 
-    _mainboard.fill(255)
+    _mainboard.fill(0)
     if frame.shape[0] >= frame_height and frame.shape[1] >= frame_width:
         _mainboard[0:frame_height, 0:frame_width] = frame
     elif frame.shape[0] < frame_height and frame.shape[1] < frame_width:
         _mainboard[0:frame.shape[0], 0:frame.shape[1]] = frame
 
     cv2.imshow(title, _mainboard)
-    #cv2.imshow("test main2", _mainboard)
-
 
 capture.release()
