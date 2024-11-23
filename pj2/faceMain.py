@@ -1,33 +1,41 @@
 import cv2
 import numpy as np
 
-def put_string(frame, text, pt, value="", color=(120, 200, 90), size=0.7):             # 문자열 출력 함수 - 그림자 효과
+# 문자열 출력 함수
+def put_string(frame, text, pt, value="", color=(120, 200, 90), size=0.7):
     text += str(value)
-    shade = (pt[0] + 2, pt[1] + 2)
     font = cv2.FONT_HERSHEY_SIMPLEX
-    #cv2.putText(frame, text, shade, font, 0.7, (0, 0, 0), 2)  # 그림자 효과
-    cv2.putText(frame, text, pt, font, size, color, 2)  # 글자 적기
+    cv2.putText(frame, text, pt, font, size, color, 2) 
 
-def calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, current_distance, current_scale, min_scale, max_scale, smooth_factor, threshold):
-    # 초기 거리 보정 (확대 비율로 원래 거리 복원)
+#확대, 축소 비율 계산 함수
+def calculate_scale(zoomin_initial_distance, zoomout_initial_distance, current_distance, current_scale, min_scale, max_scale, smooth_factor, threshold):
+    #기준 거리 보정 => 화면에 감지되는 손가락 사이의 거리와의 같은 비율로 맞춰주기
     adjusted_zoomin_initial_distance = zoomin_initial_distance * current_scale
     adjusted_zoomout_initial_distance = zoomout_initial_distance * current_scale
 
+    #확대된 상태에선 확대보단 축소에 더 민감하도록 보정
+    #축소된 상태에선 축소보단 확대에 더 민감하도록 보정
+    #현재 비율이 1보다 크다면(확대) 확대 임계치는 더 커지도록, 축소 임계치는 더 작아지도록 수행
     if current_scale > 1:
         in_threshold = threshold * current_scale
         out_threshold = threshold / (current_scale * 10)
+    #현재 비율이 1보다 작다면(축소) 확대 임계치는 더 작아지도록, 축소 임계치는 더 커지도록 수행
     else:
         in_threshold = threshold / current_scale
         out_threshold = threshold * (current_scale / 10)
 
+    #확대 시에 화면 비율 계산 수행
     if current_distance > adjusted_zoomin_initial_distance and (current_distance - adjusted_zoomin_initial_distance) > in_threshold:
+        # 확대 시에 비율이 점차적으로 늘어나도록 계산
         scale_factor = (current_distance - adjusted_zoomin_initial_distance) / 200.0
-        # 현재 확대 비율을 목표 확대 비율로 점진적으로 따라가기
+        # 현재 확대 비율이 최대 확대 비율을 넘어가지 않도록 제한
         updated_scale = min(current_scale + scale_factor * smooth_factor, max_scale)
 
+    #축소 시에 화면 비율 계산 수행
     elif adjusted_zoomout_initial_distance > current_distance and (adjusted_zoomout_initial_distance - current_distance) > out_threshold:
+        # 축소 시에 비율이 점차적으로 줄어들도록 계산
         scale_factor = (current_distance - adjusted_zoomout_initial_distance) / 200.0
-        # 현재 확대 비율을 목표 확대 비율로 점진적으로 따라가기
+        # 현재 확대 비율이 최소 축소 비율보다 작아지지 않도록 제한
         updated_scale = max(current_scale + scale_factor * smooth_factor, min_scale)
     else:
         updated_scale = current_scale
@@ -78,7 +86,7 @@ def calc_center(fingers):
 
     return (center_x, center_y)
 
-#마스크 제작
+#해당 좌표에 마스크 갱신
 def tracking_mask(mask, center_x, center_y, radius=10):
     
     mask = cv2.circle(mask, (center_x, center_y),  radius, 255, cv2.FILLED)
@@ -87,7 +95,9 @@ def tracking_mask(mask, center_x, center_y, radius=10):
 #화면에 초록색 영역을 추적
 def tracking_color(frame, fingers, lower, upper, initial_radius=None):
 
+    #가우시안으로 노이즈 제거
     image = cv2.GaussianBlur(frame.copy(), (5,5), 0)
+    #영상 이미지를 HSV로 변환
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     #해당 색 범위에 해당하는 마스크 생성
     mask = cv2.inRange(hsv, lower, upper)
@@ -107,7 +117,7 @@ def tracking_color(frame, fingers, lower, upper, initial_radius=None):
         if cv2.contourArea(contour) < 500:
             continue
 
-        # 외곽에 외접하는 원 찾기
+        #해당 윤곽선에 외접하는 원 찾기
         ((x, y), radius) = cv2.minEnclosingCircle(contour)
 
         #반지름이 일정 길이 이상일 때
@@ -123,117 +133,132 @@ def tracking_color(frame, fingers, lower, upper, initial_radius=None):
 
     return frame, fingers
 
-capture = cv2.VideoCapture(0)								# 0번 카메라 연결
-if capture.isOpened() is None: raise Exception("카메라 연결 안됨")
-
-capture.set(cv2.CAP_PROP_FRAME_WIDTH, 400)      # 카메라 프레임 너비
-capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 300)     # 카메라 프레임 높이
-capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)          # 오토포커싱 중지
-capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
-
-title = "Main Camera"              # 윈도우 이름 지정
-cv2.namedWindow(title)                          # 윈도우 생성 - 반드시 생성 해야함
-
-#확대
-max_scale = 2.0  # 최대 확대 비율
-min_scale = 0.5  # 최소 확대 비율
-
-mode_name = ["common", "zoom", "move", "blur"]
-mode = 0
-
-fingers = [] #0: 엄지, 1: 검지
-distance = 0
-
-zoomin_initial_distance = 150
-zoomout_initial_distance = 100
-
+##################관련 변수 및 상수######################
+###기본 화면 너비, 높이 초기값###
+#메인보드
 main_width = 1000
 main_height = 500
 
+#영상 프레임
 frame_width = 640
 frame_height = 360
 
+max_scale = 2.0  # 최대 확대 비율
+min_scale = 0.5  # 최소 확대 비율
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
 
+#모드 관련 설정
+mode_name = ["common", "zoom", "move", "blur"]
+mode = 0
+
+#손가락 좌표 및 거리 관련 변수
+fingers = [] #0: 엄지, 1: 검지
+distance = 0 #두 손가락 사이 거리
+
+#확대 축소를 판단하는 기준 거리
+zoomin_initial_distance = 150
+zoomout_initial_distance = 100
+
+#화면 이동 시 이동한 좌표 값
 move_x, move_y = 0,0
+
+#화면 이동 시 사용하는 손가락 좌표
+current_finger_position = None
+previous_finger_position = None
 
 ZOOM_THRESHOLD = 50 #확대 축소 시 임계치
 MOVE_THRESHOLD = 10 #화면 이동 시 임계치
 
-current_finger_position = None
-previous_finger_position = None
-
-blured_mask = None
-blured_frame = None
-blured_size = 10
+#블러 모드 시에 사용할 변수
+blured_mask = None #블러 마스크
+blured_frame = None #블러 마스크에서 적용된 블러 이미지
+blured_size = 10 #블러 수행 사이즈
 
 lower_green = np.array([35, 50, 50])  # 초록색 범위의 하한값
 upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
 
+#메인 보드 생성
 _mainboard = np.zeros((main_height, main_width, 3), np.uint8)
+#####################################################
 
+###카메라 기본 설정###
+capture = cv2.VideoCapture(0)								# 0번 카메라 연결
+if capture.isOpened() is None: raise Exception("카메라 연결 안됨")
+
+capture.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)      # 카메라 프레임 너비
+capture.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)     # 카메라 프레임 높이
+capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)          # 오토포커싱 중지
+capture.set(cv2.CAP_PROP_BRIGHTNESS, 100)       # 프레임 밝기 초기화
+
+title = "Main Camera"
+cv2.namedWindow(title)
+
+###메인 루프###
 while True:
-    ret, frame = capture.read()                 # 카메라 영상 받기
+    #카메라 영상 읽어오기
+    ret, frame = capture.read()
     if not ret: break
 
     #키보드를 통한 모드 설정
     key = cv2.waitKey(30)
+    #'q' or 'esc' 누를 시에 종료
     if key == ord('q') or key == 27: 
         break
-    elif key == ord('r'):
+    elif key == ord('r'): #모든 설정 초기화
         move_x, move_y = 0,0
         current_scale = 1.0
         mode = 0
         blured_mask = None
         blured_frame = None
         blured_size = 10
-    elif key == ord('c'):
+    elif key == ord('c'): #모든 기본 모드 주요 변경사항만 유지
         fingers.clear()
         previous_finger_position = None
         distance = 0
         mode = 0
-    elif key == ord('z'):
+    elif key == ord('z'): #확대 축소 모드
         fingers.clear()
         distance = 0
         mode = 1
-    elif key == ord('m'):
+    elif key == ord('m'): #화면 이동 모드
         fingers.clear()
         distance = 0
         mode = 2
-    elif key == ord('b'):
+    elif key == ord('b'): #블러 모드
         fingers.clear()
         distance = 0
         mode = 3
-    elif key == ord('u'):
+    #블러 원 사이즈 조절
+    elif key == ord('u'): 
         blured_size = min(blured_size + 1, 100)
     elif key == ord('d'):
         blured_size = max(blured_size - 1, 1)
     
-    #초반 기본 화면들 설정
-    frame = cv2.flip(frame, 1) #좌우반전
-    _mainboard.fill(255)
+    ###초반 기본 화면들 설정###
+    frame = cv2.flip(frame, 1) #캠이므로 좌우반전
+    _mainboard.fill(255)       #메인모드 흰색으로 초기화
 
+    #확대 축소로 변경된 화면 비율일 때 해당 비율만큼 화면 사이즈 수정
     if current_scale > 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_CUBIC)
     elif current_scale < 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_LINEAR)
+    ########################
 
+    ###각 모드 수행 조건문###
     #확대&축소 모드
     if mode == 1:
         frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green)
-
         if len(fingers) >= 2:
-
             distance = calc_dist(fingers)
             #초기 거리 설정
             cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
-            current_scale = calculate_scale_and_resize(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, ZOOM_THRESHOLD)
+            current_scale = calculate_scale(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, ZOOM_THRESHOLD)
 
             if current_scale != 1.0:
                 #좌표 보정하기
                 move_x, move_y= correct_location(fingers, current_scale, frame_width, frame_height)
 
-            # 이미지 확대/축소
         elif len(fingers) < 2:
             fingers.clear()
             distance = 0
@@ -263,6 +288,7 @@ while True:
         if len(fingers) == 1:
             center = fingers[0]
             blured_mask = tracking_mask(blured_mask, center[0], center[1], blured_size)
+    ###################
     
     #마스크가 있을 경우 해당 마스크를 계속 적용시켜주기
     if blured_mask is not None:
@@ -271,6 +297,7 @@ while True:
         blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
         frame[blured_mask > 0] = blured_frame[blured_mask > 0]
 
+    #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
 
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
@@ -283,7 +310,7 @@ while True:
     start_x = _mainboard_center_x - frame_center_x
     start_y = _mainboard_center_y - frame_center_y
 
-    # 시작 좌표가 음수일 경우, 최소값을 0으로 설정
+    # 시작 좌표들이 음수일 경우, 최소값을 0으로 설정
     if start_x < 0:
         start_x = 0
     if start_y < 0:
@@ -293,13 +320,10 @@ while True:
     end_y = min(start_y + move_frame.shape[0], _mainboard.shape[0])
     end_x = min(start_x + move_frame.shape[1], _mainboard.shape[1])
 
+    #프로그램 관련 설명, 설정 텍스트 출력
     put_string(_mainboard, "distance : ", (180, 15), distance, color=(0,0,0), size=0.6) 
     put_string(_mainboard, "mode : ", (180, 35), mode_name[mode], color=(255, 0,0), size=0.6)
     put_string(_mainboard, "current_scale : ", (180, 55), round(current_scale, 2), color=(0, 0, 255), size=0.6)
-    
-
-    #put_string(_mainboard, "limit zoom In : ", (10, 50), round(zoomin_initial_distance * current_scale, 2))  # 줌 기준 값 표시
-    #put_string(_mainboard, "limit zoom Out : ", (10, 70), round(zoomout_initial_distance * current_scale, 2))  # 축소 기준 값 표시
 
     put_string(_mainboard, "<Keyboard>", (10, 90), color=(0,0,0))
     put_string(_mainboard, "'c' : Common", (10, 120), color=(0,0,0))
@@ -308,6 +332,7 @@ while True:
     put_string(_mainboard, "'m' : Move", (10, 210), color=(0,0,0))
     put_string(_mainboard, "'b' : Blur", (10, 230), color=(0,0,0))
     
+    #메인보드에 수정된 영상 붙이기
     _mainboard[start_y:end_y, start_x:end_x] = move_frame
 
     cv2.imshow(title, _mainboard)
