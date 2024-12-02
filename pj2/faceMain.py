@@ -202,8 +202,12 @@ sharped_mask = None
 lower_green = np.array([35, 50, 50])  # 초록색 범위의 하한값
 upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
 
+#캡쳐 모드 관련 변수
+capture_list = []
+
 #메인 보드 생성
 _mainboard = np.zeros((main_height, main_width, 3), np.uint8)
+_sideboard = np.zeros((main_height, (main_width - frame_width)//2, 3), np.uint8)
 #####################################################
 
 ###카메라 기본 설정###
@@ -236,6 +240,7 @@ while True:
         blured_mask = None
         blured_frame = None
         target_size = 10
+        capture_list.clear()
     
         sharped_mask = None
     elif key == ord('o'): #모든 기본 모드 주요 변경사항만 유지
@@ -261,6 +266,7 @@ while True:
         fingers.clear()
         distance = 0
         mode = 4
+        
     #블러 원 사이즈 조절
     elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
@@ -344,6 +350,20 @@ while True:
     #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
 
+    if key == ord('c'): #캡쳐하기
+        capture_list.append(move_frame)
+        y = 10
+        gap = 10
+        capture_list.reverse() #가장 최근에 캡쳐한 순서대로 출력
+        for i, img in enumerate(capture_list):
+            if y >= _sideboard.shape[0]:
+                break
+            resized_img = cv2.resize(img.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
+            x = (_sideboard.shape[1] - resized_img.shape[1]) // 2
+            _sideboard[y:y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
+            y += resized_img.shape[0] + gap
+            
+            
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
     _mainboard_center_x = _mainboard.shape[1] // 2
     _mainboard_center_y = _mainboard.shape[0] // 2
@@ -377,9 +397,12 @@ while True:
     put_string(_mainboard, "'m' : Move", (10, 210), color=(0,0,0))
     put_string(_mainboard, "'b' : Blur", (10, 230), color=(0,0,0))
     put_string(_mainboard, "'s' : Sharp", (10, 250), color=(0,0,0))
+
+    put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 30), len(capture_list), color=(0,0,255), size=0.8)
     
     #메인보드에 수정된 영상 붙이기
     _mainboard[start_y:end_y, start_x:end_x] = move_frame
+    _mainboard[0:main_height, (main_width - frame_width)//2 + frame_width:main_width] = _sideboard
 
     cv2.imshow(title, _mainboard)
 
