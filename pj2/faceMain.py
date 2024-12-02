@@ -279,31 +279,42 @@ while True:
         target_size = max(target_size - 1, 1)
 
     
-    
     elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
         if len(capture_list) > 0:
             toggle = not toggle
         else:
             toggle = False
 
-    capture_list.reverse() #가장 최근에 캡쳐한 순서대로 출력하기 위해 뒤집기
+    #사이드 보드 화면 설정 => 토글 여부로
+    _sideboard.fill(0)
     if toggle and len(capture_list) > 0:
         side_y = 10
         
         sub_frame = frame.copy()
-        frame = capture_list[0].copy()
+        frame = capture_list[-1].copy()
 
         resized_sub_frame = cv2.resize(sub_frame.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
 
         x = (_sideboard.shape[1] - resized_sub_frame.shape[1]) // 2
+        resized_sub_frame = cv2.flip(resized_sub_frame, 1)
         _sideboard[side_y:side_y+resized_sub_frame.shape[0],x:x + resized_sub_frame.shape[1]] = resized_sub_frame
 
         side_y += resized_sub_frame.shape[0] + side_gap
     elif not toggle:
         side_y = 10
         sub_frame = None
+
+    #캡처 리스트 사이드 보드에 출력
+    if len(capture_list) > 0:
+        for i, img in enumerate(capture_list):
+            if side_y >= _sideboard.shape[0]:
+                break
+            resized_img = cv2.resize(img.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
+            x = (_sideboard.shape[1] - resized_img.shape[1]) // 2
+            _sideboard[side_y:side_y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
+            side_y += resized_img.shape[0] + side_gap
         
-    ###초반 기본 화면들 설정###
+    ###초반 메인 화면, 메인 프레임 설정###
     frame = cv2.flip(frame, 1) #캠이므로 좌우반전
     _mainboard.fill(255)       #메인모드 흰색으로 초기화
 
@@ -382,14 +393,6 @@ while True:
 
     if key == ord('c'): #캡쳐하기
         capture_list.append(move_frame)
-        for i, img in enumerate(capture_list):
-            if side_y >= _sideboard.shape[0]:
-                break
-            resized_img = cv2.resize(img.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
-            x = (_sideboard.shape[1] - resized_img.shape[1]) // 2
-            _sideboard[side_y:side_y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
-            side_y += resized_img.shape[0] + side_gap
-            
             
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
     _mainboard_center_x = _mainboard.shape[1] // 2
