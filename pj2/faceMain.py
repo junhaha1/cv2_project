@@ -213,6 +213,7 @@ upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
 
 #캡쳐 모드 관련 변수
 capture_list = [] #캡쳐한 이미지 담아두는 리스트
+temp_list = [] #현재 수정 작업 중인 이미지
 result_list = [] #수정을 완료한 캡쳐 리스트
 
 sub_frame = None
@@ -221,13 +222,16 @@ toggle = False
 side_gap = 10
 
 #메인 보드 생성
+_programboard = np.zeros((main_height, 1300, 3), np.uint8) #최종 프로그램 화면
 _mainboard = np.zeros((main_height, main_width, 3), np.uint8)
 _sideboard = np.zeros((main_height, (main_width - frame_width)//2, 3), np.uint8)
 #####################################################
 
 ###카메라 기본 설정###
 capture = cv2.VideoCapture(0)								# 0번 카메라 연결
-if capture.isOpened() is None: raise Exception("카메라 연결 안됨")
+if not capture.isOpened():
+    print("Cannot open camera")
+    exit()
 
 capture.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)      # 카메라 프레임 너비
 capture.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)     # 카메라 프레임 높이
@@ -241,10 +245,15 @@ cv2.namedWindow(title)
 while True:
     #카메라 영상 읽어오기
     ret, frame = capture.read()
-    if not ret: break
+    if not ret:
+        print("Can't receive frame (stream end?). Exiting ...")
+        break
+
+    frame = cv2.flip(frame, 1) #캠이므로 좌우반전
 
     #키보드를 통한 모드 설정
     key = cv2.waitKey(30)
+    print(key)
     #'q' or 'esc' 누를 시에 종료
     if key == ord('q') or key == 27: 
         break
@@ -255,7 +264,9 @@ while True:
         blured_mask = None
         blured_frame = None
         target_size = 10
+
         capture_list.clear()
+        result_list.clear()
     
         sharped_mask = None
     elif key == ord('o'): #모든 기본 모드 주요 변경사항만 유지
@@ -293,19 +304,31 @@ while True:
             toggle = not toggle
         else:
             toggle = False
+    elif key == 13: #엔터 눌렀을 시에 수정된 이미지를 결과 리스트에 추가:
+        if toggle and len(temp_list) > 0:
+            result_list.append(temp_list.pop())
+            print(len(result_list))
 
+    ###초반 메인 화면, 메인 프레임 설정###
     #사이드 보드 화면 설정 => 토글 여부로
-    _sideboard.fill(0)
+    _mainboard.fill(255)       #메인모드 흰 색으로 초기화
+    _sideboard.fill(0)         #사이드바 검은 색으로 초기화
+
+    #토글 및 캡쳐 리스트에 대한 초기 설정
     if toggle and len(capture_list) > 0:
         side_y = 10
         
         sub_frame = frame.copy()
-        frame = capture_list[-1].copy()
+
+        if len(temp_list) > 0:
+            frame = temp_list.pop()
+        else:
+            frame = capture_list[-1].copy()
 
         resized_sub_frame = cv2.resize(sub_frame.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
 
         x = (_sideboard.shape[1] - resized_sub_frame.shape[1]) // 2
-        resized_sub_frame = cv2.flip(resized_sub_frame, 1)
+        #resized_sub_frame = cv2.flip(resized_sub_frame, 1) #이미 좌우반전이 된 이미지를 저장하므로 좌우반전 하지 않아도 될듯
         _sideboard[side_y:side_y+resized_sub_frame.shape[0],x:x + resized_sub_frame.shape[1]] = resized_sub_frame
 
         side_y += resized_sub_frame.shape[0] + side_gap
@@ -322,11 +345,7 @@ while True:
             x = (_sideboard.shape[1] - resized_img.shape[1]) // 2
             _sideboard[side_y:side_y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
             side_y += resized_img.shape[0] + side_gap
-        
-    ###초반 메인 화면, 메인 프레임 설정###
-    frame = cv2.flip(frame, 1) #캠이므로 좌우반전
-    _mainboard.fill(255)       #메인모드 흰색으로 초기화
-
+    
     #확대 축소로 변경된 화면 비율일 때 해당 비율만큼 화면 사이즈 수정
     if current_scale > 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_CUBIC)
@@ -414,6 +433,8 @@ while True:
 
     if key == ord('c'): #현재 화면 캡쳐하기
         capture_list.append(move_frame)
+    if toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
+        temp_list.append(frame) #현재 작업중인 프레임을 임시 리스트에 집어넣기
             
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
     _mainboard_center_x = _mainboard.shape[1] // 2
