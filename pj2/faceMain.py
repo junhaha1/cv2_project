@@ -93,7 +93,7 @@ def tracking_mask(mask, center_x, center_y, radius=10):
     return mask
 
 #화면에 초록색 영역을 추적
-def tracking_color(frame, fingers, lower, upper, initial_radius=None):
+def tracking_color(frame, fingers, lower, upper, initial_radius=None, target_frame=None):
 
     #가우시안으로 노이즈 제거
     image = cv2.GaussianBlur(frame.copy(), (5,5), 0)
@@ -127,11 +127,20 @@ def tracking_color(frame, fingers, lower, upper, initial_radius=None):
             fingers.append(center)
 
             if initial_radius is None: #초기값이 없을 경우 감지된 반지름으로
-                cv2.circle(frame, center,  int(radius), (0, 0, 255), 2)
+                if target_frame is None:
+                    cv2.circle(frame, center,  int(radius), (0, 0, 255), 2)
+                else:
+                    cv2.circle(target_frame, center,  int(radius), (0, 0, 255), 2)
             else:
-                cv2.circle(frame, center,  initial_radius, (0, 0, 255), 2)
+                if target_frame is None:
+                    cv2.circle(frame, center,  initial_radius, (0, 0, 255), 2)
+                else:
+                    cv2.circle(target_frame, center,  initial_radius, (0, 0, 255), 2)
 
-    return frame, fingers
+    if target_frame is None:
+        return frame, fingers
+    else:
+        return target_frame, fingers
 
 #해당 영역 샤프닝 적용 (선명화)
 def apply_sharpening(i, image, img_mask):
@@ -328,7 +337,10 @@ while True:
     ###각 모드 수행 조건문###
     #확대&축소 모드
     if mode == 1:
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green)
+        if sub_frame is not None:
+            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, target_frame=frame)
+        else:
+            frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green)
         if len(fingers) >= 2:
             distance = calc_dist(fingers)
             #초기 거리 설정
@@ -344,7 +356,10 @@ while True:
             distance = 0
     #화면 이동 모드 => 화면이 확대되었을 때에만 작동
     elif mode == 2 and current_scale > 1.0:
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=15)
+        if sub_frame is not None:
+            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=15, target_frame=frame)
+        else:
+            frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=15)
         if len(fingers) == 1:
             current_finger_position = fingers[0]
             
@@ -358,8 +373,11 @@ while True:
         else:
             previous_finger_position = None
     #블러링 => 블러링을 적용할 마스크만 생성
-    elif mode == 3: 
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius = target_size)
+    elif mode == 3:
+        if sub_frame is not None:
+            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
+        else:
+            frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
         put_string(_mainboard, "Blur Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
         put_string(_mainboard, "'u' : Blur Size UP ", (_mainboard.shape[1] // 2, 15), color=(255, 0, 0), size=0.6)
         put_string(_mainboard, "'d' : Blur Size DOWN ", (_mainboard.shape[1] // 2, 35), color=(0, 0, 255), size=0.6)
@@ -369,7 +387,10 @@ while True:
             center = fingers[0]
             blured_mask = tracking_mask(blured_mask, center[0], center[1], target_size)
     elif mode == 4: 
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius = target_size)
+        if sub_frame is not None:
+            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
+        else:
+            frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
         put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
         if sharped_mask is None: #마스크가 없을 경우 초기화
             sharped_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
@@ -386,12 +407,12 @@ while True:
         frame[blured_mask > 0] = blured_frame[blured_mask > 0]
 
     if sharped_mask is not None:
-        frame = apply_sharpening(0, frame.copy(), sharped_mask) #테스트 코드
+        frame = apply_sharpening(0, frame.copy(), sharped_mask) #샤프닝 테스트 코드
 
     #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
 
-    if key == ord('c'): #캡쳐하기
+    if key == ord('c'): #현재 화면 캡쳐하기
         capture_list.append(move_frame)
             
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
