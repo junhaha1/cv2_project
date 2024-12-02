@@ -133,6 +133,27 @@ def tracking_color(frame, fingers, lower, upper, initial_radius=None):
 
     return frame, fingers
 
+#해당 영역 샤프닝 적용 (선명화)
+def apply_sharpening(i, image, img_mask):
+    masks = [
+        [[0, -1, 0],
+         [-1, 5, -1],
+         [0, -1, 0]],
+        [[-1, -1, -1],
+         [-1, 9, -1],
+         [-1, -1, -1]],
+        [[1, -2, 1],
+         [-2, 5, -2],
+         [1, -2, 1]]
+    ]
+    sharp_mask = np.array(masks[i], np.float32)
+    img_mask = cv2.resize(img_mask, (image.shape[1], image.shape[0]))
+    target_image = cv2.bitwise_and(image.copy(), image.copy(), mask=img_mask)
+    sarped_image = cv2.filter2D(target_image, -1, sharp_mask)
+    image[img_mask > 0] = sarped_image[img_mask > 0]
+
+    return image
+
 ##################관련 변수 및 상수######################
 ###기본 화면 너비, 높이 초기값###
 #메인보드
@@ -148,8 +169,9 @@ min_scale = 0.5  # 최소 확대 비율
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
 
 #모드 관련 설정
-mode_name = ["common", "zoom", "move", "blur"]
+mode_name = ["common", "zoom", "move", "blur", "sharp"]
 mode = 0
+previous_key = 0
 
 #손가락 좌표 및 거리 관련 변수
 fingers = [] #0: 엄지, 1: 검지
@@ -172,7 +194,10 @@ MOVE_THRESHOLD = 10 #화면 이동 시 임계치
 #블러 모드 시에 사용할 변수
 blured_mask = None #블러 마스크
 blured_frame = None #블러 마스크에서 적용된 블러 이미지
-blured_size = 10 #블러 수행 사이즈
+target_size = 10 #블러 수행 사이즈
+
+#샤프닝 모드 시에 사용할 변수
+sharped_mask = None
 
 lower_green = np.array([35, 50, 50])  # 초록색 범위의 하한값
 upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
@@ -210,8 +235,10 @@ while True:
         mode = 0
         blured_mask = None
         blured_frame = None
-        blured_size = 10
-    elif key == ord('c'): #모든 기본 모드 주요 변경사항만 유지
+        target_size = 10
+    
+        sharped_mask = None
+    elif key == ord('o'): #모든 기본 모드 주요 변경사항만 유지
         fingers.clear()
         previous_finger_position = None
         distance = 0
@@ -225,14 +252,20 @@ while True:
         distance = 0
         mode = 2
     elif key == ord('b'): #블러 모드
+        previous_key = key
         fingers.clear()
         distance = 0
         mode = 3
+    elif key == ord('s'): #샤프닝 모드
+        previous_key = key
+        fingers.clear()
+        distance = 0
+        mode = 4
     #블러 원 사이즈 조절
-    elif key == ord('u'): 
-        blured_size = min(blured_size + 1, 100)
-    elif key == ord('d'):
-        blured_size = max(blured_size - 1, 1)
+    elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
+        target_size = min(target_size + 1, 100)
+    elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('d'):
+        target_size = max(target_size - 1, 1)
     
     ###초반 기본 화면들 설정###
     frame = cv2.flip(frame, 1) #캠이므로 좌우반전
@@ -279,15 +312,23 @@ while True:
             previous_finger_position = None
     #블러링 => 블러링을 적용할 마스크만 생성
     elif mode == 3: 
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius = blured_size)
-        put_string(_mainboard, "Blur Size : ", (_mainboard.shape[1] // 2, 55), blured_size, color=(0, 0, 0), size=0.6)
+        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius = target_size)
+        put_string(_mainboard, "Blur Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
         put_string(_mainboard, "'u' : Blur Size UP ", (_mainboard.shape[1] // 2, 15), color=(255, 0, 0), size=0.6)
         put_string(_mainboard, "'d' : Blur Size DOWN ", (_mainboard.shape[1] // 2, 35), color=(0, 0, 255), size=0.6)
         if blured_mask is None: #마스크가 없을 경우 초기화
             blured_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
         if len(fingers) == 1:
             center = fingers[0]
-            blured_mask = tracking_mask(blured_mask, center[0], center[1], blured_size)
+            blured_mask = tracking_mask(blured_mask, center[0], center[1], target_size)
+    elif mode == 4: 
+        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius = target_size)
+        put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
+        if sharped_mask is None: #마스크가 없을 경우 초기화
+            sharped_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+        if len(fingers) == 1:
+            center = fingers[0]
+            sharped_mask = tracking_mask(sharped_mask, center[0], center[1], target_size)
     ###################
     
     #마스크가 있을 경우 해당 마스크를 계속 적용시켜주기
@@ -296,6 +337,9 @@ while True:
         target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
         blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
         frame[blured_mask > 0] = blured_frame[blured_mask > 0]
+
+    if sharped_mask is not None:
+        frame = apply_sharpening(0, frame.copy(), sharped_mask) #테스트 코드
 
     #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
@@ -325,12 +369,14 @@ while True:
     put_string(_mainboard, "mode : ", (180, 35), mode_name[mode], color=(255, 0,0), size=0.6)
     put_string(_mainboard, "current_scale : ", (180, 55), round(current_scale, 2), color=(0, 0, 255), size=0.6)
 
-    put_string(_mainboard, "<Keyboard>", (10, 90), color=(0,0,0))
-    put_string(_mainboard, "'c' : Common", (10, 120), color=(0,0,0))
+    put_string(_mainboard, "<Keyboard>", (10, 60), color=(0,0,0))
+    put_string(_mainboard, "'ESC' : EXIT", (10, 90), color=(0,0,0))
+    put_string(_mainboard, "'o' : Common", (10, 120), color=(0,0,0))
     put_string(_mainboard, "'r' : Reset", (10, 150), color=(0,0,0))
     put_string(_mainboard, "'z' : Zoom", (10, 180), color=(0,0,0))
     put_string(_mainboard, "'m' : Move", (10, 210), color=(0,0,0))
     put_string(_mainboard, "'b' : Blur", (10, 230), color=(0,0,0))
+    put_string(_mainboard, "'s' : Sharp", (10, 250), color=(0,0,0))
     
     #메인보드에 수정된 영상 붙이기
     _mainboard[start_y:end_y, start_x:end_x] = move_frame
@@ -338,3 +384,4 @@ while True:
     cv2.imshow(title, _mainboard)
 
 capture.release()
+cv2.destroyAllWindows()
