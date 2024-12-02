@@ -203,7 +203,13 @@ lower_green = np.array([35, 50, 50])  # 초록색 범위의 하한값
 upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
 
 #캡쳐 모드 관련 변수
-capture_list = []
+capture_list = [] #캡쳐한 이미지 담아두는 리스트
+result_list = [] #수정을 완료한 캡쳐 리스트
+
+sub_frame = None
+toggle = False
+
+side_gap = 10
 
 #메인 보드 생성
 _mainboard = np.zeros((main_height, main_width, 3), np.uint8)
@@ -266,13 +272,37 @@ while True:
         fingers.clear()
         distance = 0
         mode = 4
-        
     #블러 원 사이즈 조절
     elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
     elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('d'):
         target_size = max(target_size - 1, 1)
+
     
+    
+    elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
+        if len(capture_list) > 0:
+            toggle = not toggle
+        else:
+            toggle = False
+
+    capture_list.reverse() #가장 최근에 캡쳐한 순서대로 출력하기 위해 뒤집기
+    if toggle and len(capture_list) > 0:
+        side_y = 10
+        
+        sub_frame = frame.copy()
+        frame = capture_list[0].copy()
+
+        resized_sub_frame = cv2.resize(sub_frame.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
+
+        x = (_sideboard.shape[1] - resized_sub_frame.shape[1]) // 2
+        _sideboard[side_y:side_y+resized_sub_frame.shape[0],x:x + resized_sub_frame.shape[1]] = resized_sub_frame
+
+        side_y += resized_sub_frame.shape[0] + side_gap
+    elif not toggle:
+        side_y = 10
+        sub_frame = None
+        
     ###초반 기본 화면들 설정###
     frame = cv2.flip(frame, 1) #캠이므로 좌우반전
     _mainboard.fill(255)       #메인모드 흰색으로 초기화
@@ -352,16 +382,13 @@ while True:
 
     if key == ord('c'): #캡쳐하기
         capture_list.append(move_frame)
-        y = 10
-        gap = 10
-        capture_list.reverse() #가장 최근에 캡쳐한 순서대로 출력
         for i, img in enumerate(capture_list):
-            if y >= _sideboard.shape[0]:
+            if side_y >= _sideboard.shape[0]:
                 break
             resized_img = cv2.resize(img.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
             x = (_sideboard.shape[1] - resized_img.shape[1]) // 2
-            _sideboard[y:y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
-            y += resized_img.shape[0] + gap
+            _sideboard[side_y:side_y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
+            side_y += resized_img.shape[0] + side_gap
             
             
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
@@ -398,7 +425,8 @@ while True:
     put_string(_mainboard, "'b' : Blur", (10, 230), color=(0,0,0))
     put_string(_mainboard, "'s' : Sharp", (10, 250), color=(0,0,0))
 
-    put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 30), len(capture_list), color=(0,0,255), size=0.8)
+    put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 40), len(capture_list), color=(0,0,255), size=0.7)
+    put_string(_mainboard, "toggle = ", (main_width // 2, main_height - 20), toggle, color=(0,0,255), size=0.7)
     
     #메인보드에 수정된 영상 붙이기
     _mainboard[start_y:end_y, start_x:end_x] = move_frame
