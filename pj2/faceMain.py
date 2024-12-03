@@ -229,9 +229,7 @@ _programboard = cv2.merge((b,g,r)) #최종 프로그램 결과 창
 
 _mainboard = np.zeros((main_height, main_width, 3), np.uint8) #메인 카메라, 수정할 수 있는 화면
 _resultboard = np.zeros((main_height, 300, 3), np.uint8) #결과 화면
-_resultboard.fill(255)
 _sideboard = np.zeros((main_height, (main_width - frame_width)//2, 3), np.uint8) #캡쳐 리스트 보여주는 화면
-print((main_width - frame_width)//2)
 #####################################################
 
 ###카메라 기본 설정###
@@ -271,6 +269,7 @@ while True:
         target_size = 10
 
         capture_list.clear()
+        temp_list.clear()
         result_list.clear()
     
         sharped_mask = None
@@ -316,6 +315,7 @@ while True:
     ###초반 메인 화면, 메인 프레임 설정###
     #사이드 보드 화면 설정 => 토글 여부로
     _mainboard.fill(255)       #메인모드 흰 색으로 초기화
+    _resultboard.fill(255)     #결과보드 흰색으로 초기화
     _sideboard.fill(0)         #사이드바 검은 색으로 초기화
 
     #토글 및 캡쳐 리스트에 대한 초기 설정
@@ -329,12 +329,8 @@ while True:
         else:
             frame = capture_list[-1].copy()
 
-        resized_sub_frame = cv2.resize(sub_frame.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
-
-        x = (_sideboard.shape[1] - resized_sub_frame.shape[1]) // 2
-        _sideboard[side_y:side_y+resized_sub_frame.shape[0],x:x + resized_sub_frame.shape[1]] = resized_sub_frame
-
-        side_y += resized_sub_frame.shape[0] + side_gap
+        resized_sub_frame = cv2.resize(sub_frame.copy(), (300,160), interpolation=cv2.INTER_LINEAR)
+        _resultboard[0:160, 0:300] = resized_sub_frame
     elif not toggle:
         side_y = 10
         sub_frame = None
@@ -348,6 +344,11 @@ while True:
             x = (_sideboard.shape[1] - resized_img.shape[1]) // 2
             _sideboard[side_y:side_y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
             side_y += resized_img.shape[0] + side_gap
+
+    if len(result_list) > 0:#수정된 캡쳐 이미지 결과 보드에 출력
+        img = cv2.resize(result_list[-1].copy(), (300,160), interpolation=cv2.INTER_LINEAR)
+        y = _resultboard.shape[0] // 2
+        _resultboard[y:y+img.shape[0],0:img.shape[1]] = img
     
     #확대 축소로 변경된 화면 비율일 때 해당 비율만큼 화면 사이즈 수정
     if current_scale > 1:
