@@ -234,7 +234,7 @@ _sideboard = np.zeros((main_height, (main_width - frame_width)//2, 3), np.uint8)
 
 ###카메라 기본 설정###
 #capture = cv2.VideoCapture(0)   # 0번 기본 노트북 웹캡 카메라 연결
-capture = cv2.VideoCapture(1)   # 1번 외부 카메라 연결
+capture = cv2.VideoCapture(0)   # 1번 외부 카메라 연결
 if not capture.isOpened():
     print("카메라가 열리지 않습니다.")
     exit()
@@ -311,6 +311,10 @@ while True:
         if toggle and len(temp_list) > 0:
             result_list.append(temp_list.pop())
             print(len(result_list))
+            toggle = False
+
+    elif len(capture_list) > 0 and key == ord('d'): #엔터 눌렀을 시에 수정된 이미지를 결과 리스트에 추가:
+        capture_list.remove(capture_list[0])
 
     ###초반 메인 화면, 메인 프레임 설정###
     #사이드 보드 화면 설정 => 토글 여부로
@@ -328,6 +332,8 @@ while True:
             frame = temp_list.pop()
         else:
             frame = capture_list[-1].copy()
+            
+        temp_frame = frame.copy() #임시 리스트에 넣어둘 이미지
 
         #토글 했을 시에 캡쳐 리스트에 있는 이미지를 메인 프레임에
         #실시간 영상은 결과 보드 화면에 출력
@@ -369,87 +375,85 @@ while True:
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, target_frame=frame)
         else: #토글되지 않았을 경우
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green)
-        if len(fingers) >= 2:
-            distance = calc_dist(fingers)
-            #초기 거리 설정
-            cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
-            current_scale = calculate_scale(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, ZOOM_THRESHOLD)
+            if len(fingers) >= 2:
+                distance = calc_dist(fingers)
+                #초기 거리 설정
+                cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
+                current_scale = calculate_scale(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, ZOOM_THRESHOLD)
 
-            if current_scale != 1.0:
-                #좌표 보정하기
-                move_x, move_y= correct_location(fingers, current_scale, frame_width, frame_height)
+                if current_scale != 1.0:
+                    #좌표 보정하기
+                    move_x, move_y= correct_location(fingers, current_scale, frame_width, frame_height)
 
-        elif len(fingers) < 2:
-            fingers.clear()
-            distance = 0
+            elif len(fingers) < 2:
+                fingers.clear()
+                distance = 0
     #화면 이동 모드 => 화면이 확대되었을 때에만 작동
     elif mode == 2 and current_scale > 1.0:
         if sub_frame is not None:
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=15, target_frame=frame)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=15)
-        if len(fingers) == 1:
-            current_finger_position = fingers[0]
-            
-            if previous_finger_position is not None:
-                dx = current_finger_position[0] - previous_finger_position[0]
-                dy = current_finger_position[1] - previous_finger_position[1]
-                move_x, move_y = correct_move_location(move_x, move_y, dx, dy, frame_width, frame_height, MOVE_THRESHOLD)
+            if len(fingers) == 1:
+                current_finger_position = fingers[0]
+                
+                if previous_finger_position is not None:
+                    dx = current_finger_position[0] - previous_finger_position[0]
+                    dy = current_finger_position[1] - previous_finger_position[1]
+                    move_x, move_y = correct_move_location(move_x, move_y, dx, dy, frame_width, frame_height, MOVE_THRESHOLD)
 
-            # 현재 검지 좌표와 시간을 이전 값으로 갱신
-            previous_finger_position = current_finger_position
-        else:
-            previous_finger_position = None
+                # 현재 검지 좌표와 시간을 이전 값으로 갱신
+                previous_finger_position = current_finger_position
+            else:
+                previous_finger_position = None
     #블러링 => 블러링을 적용할 마스크만 생성
     elif mode == 3:
-        if sub_frame is not None:
+        if sub_frame is not None: #토글 됐을 경우
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
+            if blured_mask is None: #마스크가 없을 경우 초기화
+                blured_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+            if len(fingers) == 1:
+                center = fingers[0]
+                blured_mask = tracking_mask(blured_mask, center[0], center[1], target_size)
         put_string(_mainboard, "Blur Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
         put_string(_mainboard, "'u' : Blur Size UP ", (_mainboard.shape[1] // 2, 15), color=(255, 0, 0), size=0.6)
         put_string(_mainboard, "'d' : Blur Size DOWN ", (_mainboard.shape[1] // 2, 35), color=(0, 0, 255), size=0.6)
-        if blured_mask is None: #마스크가 없을 경우 초기화
-            blured_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
-        if len(fingers) == 1:
-            center = fingers[0]
-            blured_mask = tracking_mask(blured_mask, center[0], center[1], target_size)
     #샤프닝 모드
     elif mode == 4: 
-        if sub_frame is not None:
+        if sub_frame is not None: #토글
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
+            if sharped_mask is None: #마스크가 없을 경우 초기화
+                sharped_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+            if len(fingers) == 1:
+                center = fingers[0]
+                sharped_mask = tracking_mask(sharped_mask, center[0], center[1], target_size)
         put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
-        if sharped_mask is None: #마스크가 없을 경우 초기화
-            sharped_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
-        if len(fingers) == 1:
-            center = fingers[0]
-            sharped_mask = tracking_mask(sharped_mask, center[0], center[1], target_size)
-    ###################
+        ###################
     
     #현재 프레임이 실시간 영상 송출일 경우
     if not toggle: #토글이 아닐 경우에만
-        pass
+        if blured_mask is not None:
+            blured_mask = cv2.resize(blured_mask, (frame.shape[1], frame.shape[0]))
+            target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
+            blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
+            frame[blured_mask > 0] = blured_frame[blured_mask > 0]
+
+        if sharped_mask is not None:
+            frame = apply_sharpening(0, frame.copy(), sharped_mask) #샤프닝 테스트 코드
     else: #토글일 경우에만 
         pass
-    #마스크가 있을 경우 해당 마스크를 계속 적용시켜주기
-    if blured_mask is not None:
-        blured_mask = cv2.resize(blured_mask, (frame.shape[1], frame.shape[0]))
-        target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
-        blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
-        frame[blured_mask > 0] = blured_frame[blured_mask > 0]
-
-    if sharped_mask is not None:
-        frame = apply_sharpening(0, frame.copy(), sharped_mask) #샤프닝 테스트 코드
-
+    
     #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
 
-    if key == ord('c'): #현재 화면 캡쳐하기
+    if (not toggle) and key == ord('c'): #현재 화면 캡쳐하기
         capture_list.append(move_frame)
     if toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
-        temp_list.append(frame) #현재 작업중인 프레임을 임시 리스트에 집어넣기
+        temp_list.append(temp_frame) #현재 작업중인 프레임을 임시 리스트에 집어넣기
             
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
     _mainboard_center_x = _mainboard.shape[1] // 2
@@ -485,6 +489,7 @@ while True:
     put_string(_mainboard, "'b' : Blur", (10, 230), color=(0,0,0))
     put_string(_mainboard, "'s' : Sharp", (10, 250), color=(0,0,0))
 
+    put_string(_mainboard, "Temp_List = ", (40, main_height - 40), len(temp_list), color=(0,0,255), size=0.7)
     put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 40), len(capture_list), color=(0,0,255), size=0.7)
     put_string(_mainboard, "toggle = ", (main_width // 2, main_height - 20), toggle, color=(0,0,255), size=0.7)
     
