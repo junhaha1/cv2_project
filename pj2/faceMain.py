@@ -511,6 +511,9 @@ while True:
         capture_list.append(move_frame)
     if toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
         temp_list.append(temp_frame) #현재 작업중인 프레임을 임시 리스트에 집어넣기
+    if len(capture_list) == 0 and toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
+        temp_list.clear()
+        toggle = False
             
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
     _mainboard_center_x = _mainboard.shape[1] // 2
