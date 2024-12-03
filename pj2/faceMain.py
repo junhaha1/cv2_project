@@ -223,14 +223,22 @@ side_gap = 10
 
 #메인 보드 생성
 _programboard = np.zeros((main_height, 1300, 3), np.uint8) #최종 프로그램 화면
-_mainboard = np.zeros((main_height, main_width, 3), np.uint8)
-_sideboard = np.zeros((main_height, (main_width - frame_width)//2, 3), np.uint8)
+b, g, r =cv2.split(_programboard)
+g[:] = 255
+_programboard = cv2.merge((b,g,r)) #최종 프로그램 결과 창
+
+_mainboard = np.zeros((main_height, main_width, 3), np.uint8) #메인 카메라, 수정할 수 있는 화면
+_resultboard = np.zeros((main_height, 300, 3), np.uint8) #결과 화면
+_resultboard.fill(255)
+_sideboard = np.zeros((main_height, (main_width - frame_width)//2, 3), np.uint8) #캡쳐 리스트 보여주는 화면
+print((main_width - frame_width)//2)
 #####################################################
 
 ###카메라 기본 설정###
-capture = cv2.VideoCapture(0)								# 0번 카메라 연결
+#capture = cv2.VideoCapture(0)   # 0번 기본 노트북 웹캡 카메라 연결
+capture = cv2.VideoCapture(1)   # 1번 외부 카메라 연결
 if not capture.isOpened():
-    print("Cannot open camera")
+    print("카메라가 열리지 않습니다.")
     exit()
 
 capture.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)      # 카메라 프레임 너비
@@ -246,14 +254,11 @@ while True:
     #카메라 영상 읽어오기
     ret, frame = capture.read()
     if not ret:
-        print("Can't receive frame (stream end?). Exiting ...")
+        print("프레임 읽어오기 실패.")
         break
-
-    frame = cv2.flip(frame, 1) #캠이므로 좌우반전
 
     #키보드를 통한 모드 설정
     key = cv2.waitKey(30)
-    print(key)
     #'q' or 'esc' 누를 시에 종료
     if key == ord('q') or key == 27: 
         break
@@ -298,7 +303,6 @@ while True:
     elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('d'):
         target_size = max(target_size - 1, 1)
 
-    
     elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
         if len(capture_list) > 0:
             toggle = not toggle
@@ -328,7 +332,6 @@ while True:
         resized_sub_frame = cv2.resize(sub_frame.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
 
         x = (_sideboard.shape[1] - resized_sub_frame.shape[1]) // 2
-        #resized_sub_frame = cv2.flip(resized_sub_frame, 1) #이미 좌우반전이 된 이미지를 저장하므로 좌우반전 하지 않아도 될듯
         _sideboard[side_y:side_y+resized_sub_frame.shape[0],x:x + resized_sub_frame.shape[1]] = resized_sub_frame
 
         side_y += resized_sub_frame.shape[0] + side_gap
@@ -476,8 +479,10 @@ while True:
     #메인보드에 수정된 영상 붙이기
     _mainboard[start_y:end_y, start_x:end_x] = move_frame
     _mainboard[0:main_height, (main_width - frame_width)//2 + frame_width:main_width] = _sideboard
+    _programboard[0:main_height, 0:main_width] = _mainboard
+    _programboard[0:main_height, main_width:main_width + _resultboard.shape[1]] = _resultboard
 
-    cv2.imshow(title, _mainboard)
+    cv2.imshow(title, _programboard)
 
 capture.release()
 cv2.destroyAllWindows()
