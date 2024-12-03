@@ -180,11 +180,13 @@ def apply_canny(image, img_mask): #캐니 엣지를 통한 컬러 카툰 렌더�
 
     return image
 
+def apply_perspective(): #원근감 적용
+    pass
+
 def apply_contrast(): #명암 조절 적용
     pass
 
-def apply_perspective(): #원근감 적용
-    pass
+
 
 
 ##################관련 변수 및 상수######################
@@ -202,7 +204,7 @@ min_scale = 0.5  # 최소 확대 비율
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
 
 #모드 관련 설정
-mode_name = ["common", "zoom", "move", "blur", "sharp", "eraser", "cartoon"]
+mode_name = ["common", "zoom", "move", "blur", "sharp", "eraser", "cartoon", "perspective"]
 mode = 0
 previous_key = 0
 
@@ -247,6 +249,9 @@ result_list = [] #수정을 완료한 캡쳐 리스트
 sub_frame = None
 toggle = False
 side_gap = 10
+
+#원근법 관련 변수
+dots = []
 
 #메인 보드 생성
 _programboard = np.zeros((main_height, 1300, 3), np.uint8) #최종 프로그램 화면
@@ -298,10 +303,14 @@ while True:
         capture_list.clear()
         temp_list.clear()
         result_list.clear()
-    
+
+        dots.clear()
         sharped_mask = None
+        canny_mask = None
+
     elif key == ord('o'): #모든 기본 모드 주요 변경사항만 유지
         fingers.clear()
+        dots.clear()
         previous_finger_position = None
         distance = 0
         mode = 0
@@ -333,6 +342,11 @@ while True:
         fingers.clear()
         distance = 0
         mode = 6
+    elif toggle and key == ord('p'): #원근감 보정 모드 => 토글 돼었을 시에만 사용가능
+        previous_key = key
+        fingers.clear()
+        distance = 0
+        mode = 7
     #블러 원 사이즈 조절
     elif (previous_key == ord('k') or previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
@@ -340,6 +354,8 @@ while True:
         target_size = max(target_size - 1, 1)
 
     elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
+        mode = 0 #토글 시에 초기 모드는 기본 모드
+        dots.clear()
         if len(capture_list) > 0:
             toggle = not toggle
         else:
@@ -488,7 +504,21 @@ while True:
                 center = fingers[0]
                 canny_mask = tracking_mask(canny_mask, center[0], center[1], target_size)
         put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
-        ###################
+    
+    elif mode == 7: #원근감 보정 코드
+        if sub_frame is not None: #토글
+            if len(dots) > 0: #점이 있을 시에 그려주기
+                for dot in dots:
+                    cv2.circle(frame, dot,  2, (0, 255, 0), 2)
+
+            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=2, target_frame=frame)
+            if len(fingers) == 1:
+                if key == 32: #스페이스바 클릭 시에 점 등록
+                    print("test")
+                    dots.append(fingers[0])
+        put_string(_mainboard, "dot = ", (_mainboard.shape[1] // 2, 55), len(dots), color=(0, 0, 0), size=0.6)
+    ###################
+    
     
     #현재 프레임이 실시간 영상 송출일 경우
     if not toggle: #토글이 아닐 경우에만 각종 마스크 사용 모드 
@@ -514,6 +544,7 @@ while True:
     if len(capture_list) == 0 and toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
         temp_list.clear()
         toggle = False
+    
             
     # _mainboard 중앙에 move_frame을 배치하기 위한 계산
     _mainboard_center_x = _mainboard.shape[1] // 2
@@ -550,6 +581,7 @@ while True:
     put_string(_mainboard, "'s' : Sharp", (10, 250), color=(0,0,0))
     put_string(_mainboard, "'e' : Eraser", (10, 270), color=(0,0,0))
     put_string(_mainboard, "'k' : cartoon", (10, 290), color=(0,0,0))
+    put_string(_mainboard, "'p' : perspective", (10, 310), color=(0,0,0))
 
     put_string(_mainboard, "Temp_List = ", (40, main_height - 40), len(temp_list), color=(0,0,255), size=0.7)
     put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 40), len(capture_list), color=(0,0,255), size=0.7)
