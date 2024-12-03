@@ -329,13 +329,15 @@ while True:
         else:
             frame = capture_list[-1].copy()
 
+        #토글 했을 시에 캡쳐 리스트에 있는 이미지를 메인 프레임에
+        #실시간 영상은 결과 보드 화면에 출력
         resized_sub_frame = cv2.resize(sub_frame.copy(), (300,160), interpolation=cv2.INTER_LINEAR)
         _resultboard[0:160, 0:300] = resized_sub_frame
     elif not toggle:
         side_y = 10
         sub_frame = None
 
-    #캡처 리스트 사이드 보드에 출력
+    #캡처 리스트를 사이드 보드에 출력
     if len(capture_list) > 0:
         for i, img in enumerate(capture_list):
             if side_y >= _sideboard.shape[0]:
@@ -345,11 +347,14 @@ while True:
             _sideboard[side_y:side_y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
             side_y += resized_img.shape[0] + side_gap
 
-    if len(result_list) > 0:#수정된 캡쳐 이미지 결과 보드에 출력
+    #수정된 캡쳐 이미지 결과 보드에 출력
+    #테스트 코드
+    if len(result_list) > 0:
         img = cv2.resize(result_list[-1].copy(), (300,160), interpolation=cv2.INTER_LINEAR)
         y = _resultboard.shape[0] // 2
         _resultboard[y:y+img.shape[0],0:img.shape[1]] = img
     
+
     #확대 축소로 변경된 화면 비율일 때 해당 비율만큼 화면 사이즈 수정
     if current_scale > 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_CUBIC)
@@ -360,9 +365,9 @@ while True:
     ###각 모드 수행 조건문###
     #확대&축소 모드
     if mode == 1:
-        if sub_frame is not None:
+        if sub_frame is not None: #토글이 되었을 경우
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, target_frame=frame)
-        else:
+        else: #토글되지 않았을 경우
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green)
         if len(fingers) >= 2:
             distance = calc_dist(fingers)
@@ -409,6 +414,7 @@ while True:
         if len(fingers) == 1:
             center = fingers[0]
             blured_mask = tracking_mask(blured_mask, center[0], center[1], target_size)
+    #샤프닝 모드
     elif mode == 4: 
         if sub_frame is not None:
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
@@ -422,6 +428,11 @@ while True:
             sharped_mask = tracking_mask(sharped_mask, center[0], center[1], target_size)
     ###################
     
+    #현재 프레임이 실시간 영상 송출일 경우
+    if not toggle: #토글이 아닐 경우에만
+        pass
+    else: #토글일 경우에만 
+        pass
     #마스크가 있을 경우 해당 마스크를 계속 적용시켜주기
     if blured_mask is not None:
         blured_mask = cv2.resize(blured_mask, (frame.shape[1], frame.shape[0]))
