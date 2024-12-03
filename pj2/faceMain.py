@@ -169,8 +169,16 @@ def apply_sharpening(i, image, img_mask):
 
     return image
 
-def apply_canny(): #캐니 엣지를 통한 카툰 렌더링 적용
-    pass
+def apply_canny(image, img_mask): #캐니 엣지를 통한 컬러 카툰 렌더링 
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  
+    edges = cv2.Canny(gray, 100, 200)  
+    edges = cv2.bitwise_not(edges)  
+
+    img_edges = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)  
+    cartoon = cv2.bitwise_and(image, img_edges, mask=img_mask) 
+    image[img_mask > 0] = cartoon[img_mask > 0]
+
+    return image
 
 def apply_contrast(): #명암 조절 적용
     pass
@@ -194,7 +202,7 @@ min_scale = 0.5  # 최소 확대 비율
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
 
 #모드 관련 설정
-mode_name = ["common", "zoom", "move", "blur", "sharp", "eraser"]
+mode_name = ["common", "zoom", "move", "blur", "sharp", "eraser", "cartoon"]
 mode = 0
 previous_key = 0
 
@@ -224,6 +232,9 @@ target_size = 10 #블러 수행 사이즈
 #샤프닝 모드 시에 사용할 변수
 sharped_mask = None
 
+#캐니 엣지를 통한 카툰 렌더링 관련 변수
+canny_mask = None
+
 lower_green = np.array([35, 50, 50])  # 초록색 범위의 하한값
 upper_green = np.array([90, 255, 255])  # 초록색 범위의 상한값
 
@@ -232,9 +243,9 @@ capture_list = [] #캡쳐한 이미지 담아두는 리스트
 temp_list = [] #현재 수정 작업 중인 이미지
 result_list = [] #수정을 완료한 캡쳐 리스트
 
+#토글 관련 변수
 sub_frame = None
 toggle = False
-
 side_gap = 10
 
 #메인 보드 생성
@@ -317,10 +328,15 @@ while True:
         fingers.clear()
         distance = 0
         mode = 5
+    elif key == ord('k'): #캐니엣지(카툰렌더링) 모드
+        previous_key = key
+        fingers.clear()
+        distance = 0
+        mode = 6
     #블러 원 사이즈 조절
-    elif (previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
+    elif (previous_key == ord('k') or previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
-    elif (previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('d'):
+    elif (previous_key == ord('k') or previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('d'):
         target_size = max(target_size - 1, 1)
 
     elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
@@ -460,18 +476,31 @@ while True:
             center = fingers[0]
             blured_mask, sharped_mask = eraser_mask(blured_mask, sharped_mask, center[0], center[1], target_size)
         put_string(_mainboard, "eraser Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
+
+    elif mode == 6: #카툰 렌더링 모드
+        if sub_frame is not None: #토글
+            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
+        else:
+            frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
+            if canny_mask is None: #마스크가 없을 경우 초기화
+                canny_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+            if len(fingers) == 1:
+                center = fingers[0]
+                canny_mask = tracking_mask(canny_mask, center[0], center[1], target_size)
+        put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
         ###################
     
     #현재 프레임이 실시간 영상 송출일 경우
-    if not toggle: #토글이 아닐 경우에만
-        if blured_mask is not None:
+    if not toggle: #토글이 아닐 경우에만 각종 마스크 사용 모드 
+        if canny_mask is not None: #카툰 렌더링 적용
+            frame = apply_canny(frame.copy(), canny_mask)
+        if blured_mask is not None: #블러 적용
             blured_mask = cv2.resize(blured_mask, (frame.shape[1], frame.shape[0]))
             target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
             blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
             frame[blured_mask > 0] = blured_frame[blured_mask > 0]
-
-        if sharped_mask is not None:
-            frame = apply_sharpening(0, frame.copy(), sharped_mask) #샤프닝 테스트 코드
+        if sharped_mask is not None: #샤프닝 적용
+            frame = apply_sharpening(0, frame.copy(), sharped_mask)
     else: #토글일 경우에만 
         pass
     
@@ -517,6 +546,7 @@ while True:
     put_string(_mainboard, "'b' : Blur", (10, 230), color=(0,0,0))
     put_string(_mainboard, "'s' : Sharp", (10, 250), color=(0,0,0))
     put_string(_mainboard, "'e' : Eraser", (10, 270), color=(0,0,0))
+    put_string(_mainboard, "'k' : cartoon", (10, 290), color=(0,0,0))
 
     put_string(_mainboard, "Temp_List = ", (40, main_height - 40), len(temp_list), color=(0,0,255), size=0.7)
     put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 40), len(capture_list), color=(0,0,255), size=0.7)
