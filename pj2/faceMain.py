@@ -92,6 +92,12 @@ def tracking_mask(mask, center_x, center_y, radius=10):
     mask = cv2.circle(mask, (center_x, center_y),  radius, 255, cv2.FILLED)
     return mask
 
+#해당 좌표에 마스크 지우기
+def eraser_mask(mask1, mask2, center_x, center_y, radius=10):
+    mask1 = cv2.circle(mask1, (center_x, center_y),  radius, 0, cv2.FILLED)
+    mask2 = cv2.circle(mask2, (center_x, center_y),  radius, 0, cv2.FILLED)
+    return mask1, mask2
+
 #화면에 초록색 영역을 추적
 def tracking_color(frame, fingers, lower, upper, initial_radius=None, target_frame=None):
 
@@ -163,6 +169,16 @@ def apply_sharpening(i, image, img_mask):
 
     return image
 
+def apply_canny(): #캐니 엣지를 통한 카툰 렌더링 적용
+    pass
+
+def apply_contrast(): #명암 조절 적용
+    pass
+
+def apply_perspective(): #원근감 적용
+    pass
+
+
 ##################관련 변수 및 상수######################
 ###기본 화면 너비, 높이 초기값###
 #메인보드
@@ -178,7 +194,7 @@ min_scale = 0.5  # 최소 확대 비율
 current_scale = 1.0  # 현재 확대 비율 (초기값 1.0)
 
 #모드 관련 설정
-mode_name = ["common", "zoom", "move", "blur", "sharp"]
+mode_name = ["common", "zoom", "move", "blur", "sharp", "eraser"]
 mode = 0
 previous_key = 0
 
@@ -296,10 +312,15 @@ while True:
         fingers.clear()
         distance = 0
         mode = 4
+    elif key == ord('e'): #지우개 모드
+        previous_key = key
+        fingers.clear()
+        distance = 0
+        mode = 5
     #블러 원 사이즈 조절
-    elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
+    elif (previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
-    elif (previous_key == ord('b') or previous_key == ord('s')) and key == ord('d'):
+    elif (previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('d'):
         target_size = max(target_size - 1, 1)
 
     elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
@@ -313,7 +334,7 @@ while True:
             print(len(result_list))
             toggle = False
 
-    elif len(capture_list) > 0 and key == ord('d'): #엔터 눌렀을 시에 수정된 이미지를 결과 리스트에 추가:
+    elif len(capture_list) > 0 and key == 45: #'-' 눌렀을 경우 캡쳐 리스트 삭제하기:
         capture_list.remove(capture_list[0])
 
     ###초반 메인 화면, 메인 프레임 설정###
@@ -332,7 +353,7 @@ while True:
             frame = temp_list.pop()
         else:
             frame = capture_list[-1].copy()
-            
+
         temp_frame = frame.copy() #임시 리스트에 넣어둘 이미지
 
         #토글 했을 시에 캡쳐 리스트에 있는 이미지를 메인 프레임에
@@ -432,6 +453,13 @@ while True:
                 center = fingers[0]
                 sharped_mask = tracking_mask(sharped_mask, center[0], center[1], target_size)
         put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
+
+    elif not toggle and mode == 5: #지우개 모드
+        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
+        if len(fingers) == 1:
+            center = fingers[0]
+            blured_mask, sharped_mask = eraser_mask(blured_mask, sharped_mask, center[0], center[1], target_size)
+        put_string(_mainboard, "eraser Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
         ###################
     
     #현재 프레임이 실시간 영상 송출일 경우
@@ -488,6 +516,7 @@ while True:
     put_string(_mainboard, "'m' : Move", (10, 210), color=(0,0,0))
     put_string(_mainboard, "'b' : Blur", (10, 230), color=(0,0,0))
     put_string(_mainboard, "'s' : Sharp", (10, 250), color=(0,0,0))
+    put_string(_mainboard, "'e' : Eraser", (10, 270), color=(0,0,0))
 
     put_string(_mainboard, "Temp_List = ", (40, main_height - 40), len(temp_list), color=(0,0,255), size=0.7)
     put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 40), len(capture_list), color=(0,0,255), size=0.7)
