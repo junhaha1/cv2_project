@@ -225,12 +225,6 @@ def apply_perspective(image, dots): #원근감 적용
 
     return image
 
-def apply_contrast(): #명암 조절 적용
-    pass
-
-
-
-
 ##################관련 변수 및 상수######################
 ###기본 화면 너비, 높이 초기값###
 #메인보드
@@ -289,6 +283,8 @@ result_list = [] #수정을 완료한 캡쳐 리스트
 
 capture_index = 0
 result_index = 0
+
+result_window = "Result Image"
 
 #토글 관련 변수
 sub_frame = None
@@ -419,6 +415,9 @@ while True:
         if result_index < len(result_list) - 1 and len(result_list) > 1: #2개 이상이라면
             result_index += 1
             print(result_index)
+    elif key == 32: #결과 이미지 별도의 윈도우로 띄우기
+        if len(result_list):
+            cv2.imshow(result_window, result_list[result_index])
     #블러 원 사이즈 조절
     elif (previous_key == ord('k') or previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
@@ -428,6 +427,10 @@ while True:
     elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
         mode = 0 #토글 시에 초기 모드는 기본 모드
         dots.clear()
+        #토글 시엔 기본 스케일 관련 초기화
+        current_scale = 1.0
+        move_x = 0
+        move_y = 0
         temp_list.clear() #캡쳐본 임시 저장 리스트 비우기
         if len(capture_list) > 0:
             toggle = not toggle
@@ -517,28 +520,22 @@ while True:
     ###각 모드 수행 조건문###
     #확대&축소 모드
     if mode == 1:
-        if sub_frame is not None: #토글이 되었을 경우
-            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, target_frame=frame)
-        else: #토글되지 않았을 경우
+        if sub_frame is None: #토글이 되었을 경우
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green)
             if len(fingers) >= 2:
                 distance = calc_dist(fingers)
                 #초기 거리 설정
                 cv2.line(frame, fingers[0], fingers[1], (0, 0, 255), 2)
                 current_scale = calculate_scale(zoomin_initial_distance, zoomout_initial_distance, distance, current_scale, 0.5, 2.0, 0.07, ZOOM_THRESHOLD)
-
                 if current_scale != 1.0:
                     #좌표 보정하기
                     move_x, move_y= correct_location(fingers, current_scale, frame_width, frame_height)
-
             elif len(fingers) < 2:
                 fingers.clear()
                 distance = 0
     #화면 이동 모드 => 화면이 확대되었을 때에만 작동
     elif mode == 2 and current_scale > 1.0:
-        if sub_frame is not None:
-            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=15, target_frame=frame)
-        else:
+        if sub_frame is None:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=15)
             if len(fingers) == 1:
                 current_finger_position = fingers[0]
