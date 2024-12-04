@@ -301,6 +301,7 @@ canny_tmask = None
 
 #원근법 관련 변수
 dots = []
+perscheck = False
 
 #메인 보드 생성
 _programboard = np.zeros((main_height, 1300, 3), np.uint8) #최종 프로그램 화면
@@ -355,6 +356,8 @@ while True:
         capture_index = 0
 
         dots.clear()
+        perscheck = False
+
         sharped_mask = None
         canny_mask = None
 
@@ -409,9 +412,13 @@ while True:
             capture_index += 1
             print(capture_index)
     elif key == 0x250000: #화살표 좌
-        print("좌")
+        if result_index > 0 and len(result_list) > 1: #2개 이상이라면
+            result_index -= 1
+            print(result_index)
     elif key == 0x270000: #화살표 우
-        print("우")
+        if result_index < len(result_list) - 1 and len(result_list) > 1: #2개 이상이라면
+            result_index += 1
+            print(result_index)
     #블러 원 사이즈 조절
     elif (previous_key == ord('k') or previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
@@ -439,7 +446,7 @@ while True:
                 img = apply_bluring(img.copy(), blured_tmask)
             if sharped_tmask is not None: #샤프닝 적용
                 img = apply_sharpening(0, img.copy(), sharped_tmask)
-                
+
             blured_tmask = None
             sharped_tmask = None
             canny_tmask = None
@@ -451,7 +458,10 @@ while True:
         capture_list = [item for item in capture_list if not np.array_equal(item, capture_list[capture_index])]
         if capture_index > 0:
             capture_index -= 1
-        print(capture_index)
+    elif len(result_list) > 0 and key == 8: #'백스페이스' 눌렀을 경우 결과 리스트 삭제하기:
+        result_list = [item for item in result_list if not np.array_equal(item, result_list[result_index])]
+        if result_index > 0:
+            result_index -= 1
         
 
     ###초반 메인 화면, 메인 프레임 설정###
@@ -491,13 +501,12 @@ while True:
             side_y += resized_img.shape[0] + side_gap
 
     #수정된 캡쳐 이미지 결과 보드에 출력
-    #테스트 코드
     if len(result_list) > 0:
-        img = cv2.resize(result_list[-1].copy(), (300,160), interpolation=cv2.INTER_LINEAR)
+        img = cv2.resize(result_list[result_index].copy(), (300,160), interpolation=cv2.INTER_LINEAR)
         y = _resultboard.shape[0] // 2
         _resultboard[y:y+img.shape[0],0:img.shape[1]] = img
+        put_string(_resultboard, "current_img : ", (10, y+img.shape[0] + 20), result_index, color=(0,0,0))
     
-
     #확대 축소로 변경된 화면 비율일 때 해당 비율만큼 화면 사이즈 수정
     if current_scale > 1:
         frame = cv2.resize(frame, None, fx=current_scale, fy=current_scale, interpolation=cv2.INTER_CUBIC)
@@ -613,16 +622,13 @@ while True:
                 for dot in dots:
                     cv2.circle(frame, dot,  2, (0, 255, 0), 2)
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=2, target_frame=frame)
-
             if len(dots) < 4 and key == 32: #스페이스바 클릭 시에 점 추가
                 if len(fingers) == 1:
                     dots.append(fingers[0])
-            elif len(dots) > 0 and key == 8: #백스페이스바 클릭 시에 점 삭제
+            elif len(dots) > 0 and key == ord('a'): #'a' 클릭 시에 점 삭제
                 dots.pop() 
             elif len(dots) == 4 and key == ord('p'): #원근법을 적용할 점이 4개이고, 'p'키를 다시 눌렀을 경우 원근감 적용
-                test_img = apply_perspective(frame, dots)
-                cv2.imshow("test perspective", test_img)
-                dots.clear() #초기화 해주기
+                perscheck = True
                 
         put_string(_mainboard, "dot = ", (_mainboard.shape[1] // 2, 55), len(dots), color=(0, 0, 0), size=0.6)
     ###################
@@ -643,6 +649,13 @@ while True:
             frame = apply_bluring(frame.copy(), blured_tmask)
         if sharped_tmask is not None: #샤프닝 적용
             frame = apply_sharpening(0, frame.copy(), sharped_tmask)
+        if perscheck: #원근 적용이라면
+            perscheck = False
+            temp_frame = apply_perspective(frame, dots)
+            dots.clear() #초기화 해주기
+            canny_tmask = None
+            blured_tmask = None
+            sharped_tmask = None
     
     #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
@@ -693,7 +706,8 @@ while True:
     put_string(_mainboard, "'k' : cartoon", (10, 290), color=(0,0,0))
     put_string(_mainboard, "'p' : perspective", (10, 310), color=(0,0,0))
 
-    put_string(_mainboard, "Temp_List = ", (40, main_height - 40), len(temp_list), color=(0,0,255), size=0.7)
+    put_string(_mainboard, "Max_Capture = ", (40, main_height - 40), 6, color=(0,0,255), size=0.7)
+    put_string(_mainboard, "Current_Index = ", (40, main_height - 20), capture_index, color=(0,0,255), size=0.7)
     put_string(_mainboard, "Captrue_count = ", (main_width // 2, main_height - 40), len(capture_list), color=(0,0,255), size=0.7)
     put_string(_mainboard, "toggle = ", (main_width // 2, main_height - 20), toggle, color=(0,0,255), size=0.7)
     
