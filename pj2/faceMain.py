@@ -384,7 +384,7 @@ while True:
             capture_index -= 1
             print(capture_index)
     elif key == 0x280000: #화살표 하
-        if capture_index < len(capture_list) and len(capture_list) > 1: #2개 이상이라면
+        if capture_index < len(capture_list) - 1 and len(capture_list) > 1: #2개 이상이라면
             capture_index += 1
             print(capture_index)
     elif key == 0x250000: #화살표 좌
@@ -412,7 +412,11 @@ while True:
             toggle = False
 
     elif len(capture_list) > 0 and key == 45: #'-' 눌렀을 경우 캡쳐 리스트 삭제하기:
-        capture_list.remove(capture_list[0])
+        capture_list = [item for item in capture_list if not np.array_equal(item, capture_list[capture_index])]
+        if capture_index > 0:
+            capture_index -=1 
+        print(capture_index)
+        
 
     ###초반 메인 화면, 메인 프레임 설정###
     #사이드 보드 화면 설정 => 토글 여부로
