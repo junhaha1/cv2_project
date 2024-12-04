@@ -180,8 +180,37 @@ def apply_canny(image, img_mask): #캐니 엣지를 통한 컬러 카툰 렌더�
 
     return image
 
-def apply_perspective(): #원근감 적용
-    pass
+def apply_perspective(image, dots): #원근감 적용
+        # 좌표 4개 중 상하좌우 찾기
+    sm = dots.sum(axis=1)  # 4쌍의 좌표 각각 x+y 계산
+    diff = np.diff(dots, axis=1)  # 4쌍의 좌표 각각 x-y 계산
+
+    topLeft = dots[np.argmin(sm)]  # x+y가 가장 값이 좌상단 좌표
+    bottomRight = dots[np.argmax(sm)]  # x+y가 가장 큰 값이 우하단 좌표
+    topRight = dots[np.argmin(diff)]  # x-y가 가장 작은 것이 우상단 좌표
+    bottomLeft = dots[np.argmax(diff)]  # x-y가 가장 큰 값이 좌하단 좌표
+
+    # 변환 전 4개 좌표 
+    dots1 = np.float32([topLeft, topRight, bottomRight, bottomLeft])
+
+    # 변환 후 영상에 사용할 서류의 폭과 높이 계산
+    w1 = abs(bottomRight[0] - bottomLeft[0])
+    w2 = abs(topRight[0] - topLeft[0])
+    h1 = abs(topRight[1] - bottomRight[1])
+    h2 = abs(topLeft[1] - bottomLeft[1])
+    width = int(max([w1, w2]))  # 두 좌우 거리간의 최대값이 서류의 폭
+    height = int(max([h1, h2]))  # 두 상하 거리간의 최대값이 서류의 높이
+
+    # 변환 후 4개 좌표
+    dots2 = np.float32([[0, 0], [width - 1, 0],
+                        [width - 1, height - 1], [0, height - 1]])
+
+    # 변환 행렬 계산 
+    mtrx = cv2.getPerspectiveTransform(dots1, dots2)
+    # 원근 변환 적용
+    image = cv2.warpPerspective(image, mtrx, (width, height))
+
+    return image
 
 def apply_contrast(): #명암 조절 적용
     pass
@@ -513,9 +542,14 @@ while True:
 
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=2, target_frame=frame)
             if len(fingers) == 1:
-                if key == 32: #스페이스바 클릭 시에 점 등록
+                if len(dots) < 4 and key == 32: #스페이스바 클릭 시에 점 등록
                     print("test")
                     dots.append(fingers[0])
+            ##테스트 코드
+            if len(dots) == 4 and key == 32: #원근법을 적용할 점이 4개이고, 엔터를 눌렀을 시에
+                test_img = apply_perspective(frame, dots)
+                cv2.imshow("test perspective", test_img)
+                
         put_string(_mainboard, "dot = ", (_mainboard.shape[1] // 2, 55), len(dots), color=(0, 0, 0), size=0.6)
     ###################
     
