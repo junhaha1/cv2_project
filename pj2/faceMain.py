@@ -539,16 +539,17 @@ while True:
             if len(dots) > 0: #점이 있을 시에 그려주기
                 for dot in dots:
                     cv2.circle(frame, dot,  2, (0, 255, 0), 2)
-
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=2, target_frame=frame)
-            if len(fingers) == 1:
-                if len(dots) < 4 and key == 32: #스페이스바 클릭 시에 점 등록
-                    print("test")
+
+            if len(dots) < 4 and key == 32: #스페이스바 클릭 시에 점 추가
+                if len(fingers) == 1:
                     dots.append(fingers[0])
-            ##테스트 코드
-            if len(dots) == 4 and key == 32: #원근법을 적용할 점이 4개이고, 엔터를 눌렀을 시에
+            elif len(dots) > 0 and key == 8: #백스페이스바 클릭 시에 점 삭제
+                dots.pop() 
+            elif len(dots) == 4 and key == ord('p'): #원근법을 적용할 점이 4개이고, 'p'키를 다시 눌렀을 경우 원근감 적용
                 test_img = apply_perspective(frame, dots)
                 cv2.imshow("test perspective", test_img)
+                dots.clear() #초기화 해주기
                 
         put_string(_mainboard, "dot = ", (_mainboard.shape[1] // 2, 55), len(dots), color=(0, 0, 0), size=0.6)
     ###################
