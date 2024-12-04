@@ -274,6 +274,9 @@ capture_list = [] #캡쳐한 이미지 담아두는 리스트
 temp_list = [] #현재 수정 작업 중인 이미지
 result_list = [] #수정을 완료한 캡쳐 리스트
 
+capture_index = 0
+result_index = 0
+
 #토글 관련 변수
 sub_frame = None
 toggle = False
@@ -317,7 +320,7 @@ while True:
         break
 
     #키보드를 통한 모드 설정
-    key = cv2.waitKey(30)
+    key = cv2.waitKeyEx(30)
     #'q' or 'esc' 누를 시에 종료
     if key == ord('q') or key == 27: 
         break
@@ -332,11 +335,11 @@ while True:
         capture_list.clear()
         temp_list.clear()
         result_list.clear()
+        capture_index = 0
 
         dots.clear()
         sharped_mask = None
         canny_mask = None
-
     elif key == ord('o'): #모든 기본 모드 주요 변경사항만 유지
         fingers.clear()
         dots.clear()
@@ -376,6 +379,18 @@ while True:
         fingers.clear()
         distance = 0
         mode = 7
+    elif key == 0x260000: #화살표 상
+        if capture_index > 0 and len(capture_list) > 1: #2개 이상이라면
+            capture_index -= 1
+            print(capture_index)
+    elif key == 0x280000: #화살표 하
+        if capture_index < len(capture_list) and len(capture_list) > 1: #2개 이상이라면
+            capture_index += 1
+            print(capture_index)
+    elif key == 0x250000: #화살표 좌
+        print("좌")
+    elif key == 0x270000: #화살표 우
+        print("우")
     #블러 원 사이즈 조절
     elif (previous_key == ord('k') or previous_key == ord('e') or previous_key == ord('b') or previous_key == ord('s')) and key == ord('u'):
         target_size = min(target_size + 1, 100)
@@ -385,6 +400,7 @@ while True:
     elif key == ord('t'): #캡쳐한 이미지와 토글 버튼
         mode = 0 #토글 시에 초기 모드는 기본 모드
         dots.clear()
+        temp_list.clear() #캡쳐본 임시 저장 리스트 비우기
         if len(capture_list) > 0:
             toggle = not toggle
         else:
@@ -407,16 +423,14 @@ while True:
     #토글 및 캡쳐 리스트에 대한 초기 설정
     if toggle and len(capture_list) > 0:
         side_y = 10
-        
         sub_frame = frame.copy()
 
         if len(temp_list) > 0:
             frame = temp_list.pop()
         else:
-            frame = capture_list[-1].copy()
+            frame = capture_list[capture_index].copy() #캡쳐한 이미지를 토글하도록 구현
 
         temp_frame = frame.copy() #임시 리스트에 넣어둘 이미지
-
         #토글 했을 시에 캡쳐 리스트에 있는 이미지를 메인 프레임에
         #실시간 영상은 결과 보드 화면에 출력
         resized_sub_frame = cv2.resize(sub_frame.copy(), (300,160), interpolation=cv2.INTER_LINEAR)
@@ -432,6 +446,8 @@ while True:
                 break
             resized_img = cv2.resize(img.copy(), None, fx=0.2, fy=0.2, interpolation=cv2.INTER_LINEAR)
             x = (_sideboard.shape[1] - resized_img.shape[1]) // 2
+            if i == capture_index:
+                cv2.rectangle(resized_img, (0,0), (resized_img.shape[1]-1, resized_img.shape[0]-1), (0, 255, 0), 2)
             _sideboard[side_y:side_y+resized_img.shape[0],x:x + resized_img.shape[1]] = resized_img
             side_y += resized_img.shape[0] + side_gap
 
