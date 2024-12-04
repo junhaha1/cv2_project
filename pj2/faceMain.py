@@ -148,6 +148,14 @@ def tracking_color(frame, fingers, lower, upper, initial_radius=None, target_fra
     else:
         return target_frame, fingers
 
+#블러 적용 함수
+def apply_bluring(frame, mask):
+    blured_mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
+    target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
+    blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
+    frame[blured_mask > 0] = blured_frame[blured_mask > 0]
+
+    return frame
 #해당 영역 샤프닝 적용 (선명화)
 def apply_sharpening(i, image, img_mask):
     masks = [
@@ -182,16 +190,21 @@ def apply_canny(image, img_mask): #캐니 엣지를 통한 컬러 카툰 렌더�
 
 def apply_perspective(image, dots): #원근감 적용
         # 좌표 4개 중 상하좌우 찾기
-    sm = dots.sum(axis=1)  # 4쌍의 좌표 각각 x+y 계산
-    diff = np.diff(dots, axis=1)  # 4쌍의 좌표 각각 x-y 계산
+    pts = np.zeros((4, 2), dtype=np.float32)
+    for i, dot in enumerate(dots):
+        pts[i] = dot
 
-    topLeft = dots[np.argmin(sm)]  # x+y가 가장 값이 좌상단 좌표
-    bottomRight = dots[np.argmax(sm)]  # x+y가 가장 큰 값이 우하단 좌표
-    topRight = dots[np.argmin(diff)]  # x-y가 가장 작은 것이 우상단 좌표
-    bottomLeft = dots[np.argmax(diff)]  # x-y가 가장 큰 값이 좌하단 좌표
+
+    sm = pts.sum(axis=1)  # 4쌍의 좌표 각각 x+y 계산
+    diff = np.diff(pts, axis=1)  # 4쌍의 좌표 각각 x-y 계산
+
+    topLeft = pts[np.argmin(sm)]  # x+y가 가장 값이 좌상단 좌표
+    bottomRight = pts[np.argmax(sm)]  # x+y가 가장 큰 값이 우하단 좌표
+    topRight = pts[np.argmin(diff)]  # x-y가 가장 작은 것이 우상단 좌표
+    bottomLeft = pts[np.argmax(diff)]  # x-y가 가장 큰 값이 좌하단 좌표
 
     # 변환 전 4개 좌표 
-    dots1 = np.float32([topLeft, topRight, bottomRight, bottomLeft])
+    pts1 = np.float32([topLeft, topRight, bottomRight, bottomLeft])
 
     # 변환 후 영상에 사용할 서류의 폭과 높이 계산
     w1 = abs(bottomRight[0] - bottomLeft[0])
@@ -202,11 +215,11 @@ def apply_perspective(image, dots): #원근감 적용
     height = int(max([h1, h2]))  # 두 상하 거리간의 최대값이 서류의 높이
 
     # 변환 후 4개 좌표
-    dots2 = np.float32([[0, 0], [width - 1, 0],
+    pts2 = np.float32([[0, 0], [width - 1, 0],
                         [width - 1, height - 1], [0, height - 1]])
 
     # 변환 행렬 계산 
-    mtrx = cv2.getPerspectiveTransform(dots1, dots2)
+    mtrx = cv2.getPerspectiveTransform(pts1, pts2)
     # 원근 변환 적용
     image = cv2.warpPerspective(image, mtrx, (width, height))
 
@@ -282,6 +295,10 @@ sub_frame = None
 toggle = False
 side_gap = 10
 
+blured_tmask = None
+sharped_tmask = None
+canny_tmask = None
+
 #원근법 관련 변수
 dots = []
 
@@ -340,6 +357,10 @@ while True:
         dots.clear()
         sharped_mask = None
         canny_mask = None
+
+        blured_tmask = None
+        sharped_tmask = None
+        canny_tmask = None
     elif key == ord('o'): #모든 기본 모드 주요 변경사항만 유지
         fingers.clear()
         dots.clear()
@@ -405,16 +426,31 @@ while True:
             toggle = not toggle
         else:
             toggle = False
+
+        blured_tmask = None
+        sharped_tmask = None
+        canny_tmask = None
     elif key == 13: #엔터 눌렀을 시에 수정된 이미지를 결과 리스트에 추가:
         if toggle and len(temp_list) > 0:
-            result_list.append(temp_list.pop())
-            print(len(result_list))
+            img = temp_list.pop()
+            if canny_tmask is not None: #카툰 렌더링 적용
+                img = apply_canny(img.copy(), canny_tmask)
+            if blured_tmask is not None: #블러 적용
+                img = apply_bluring(img.copy(), blured_tmask)
+            if sharped_tmask is not None: #샤프닝 적용
+                img = apply_sharpening(0, img.copy(), sharped_tmask)
+                
+            blured_tmask = None
+            sharped_tmask = None
+            canny_tmask = None
+
+            result_list.append(img)
             toggle = False
 
     elif len(capture_list) > 0 and key == 45: #'-' 눌렀을 경우 캡쳐 리스트 삭제하기:
         capture_list = [item for item in capture_list if not np.array_equal(item, capture_list[capture_index])]
         if capture_index > 0:
-            capture_index -=1 
+            capture_index -= 1
         print(capture_index)
         
 
@@ -433,8 +469,7 @@ while True:
             frame = temp_list.pop()
         else:
             frame = capture_list[capture_index].copy() #캡쳐한 이미지를 토글하도록 구현
-
-        temp_frame = frame.copy() #임시 리스트에 넣어둘 이미지
+        temp_frame = frame.copy()
         #토글 했을 시에 캡쳐 리스트에 있는 이미지를 메인 프레임에
         #실시간 영상은 결과 보드 화면에 출력
         resized_sub_frame = cv2.resize(sub_frame.copy(), (300,160), interpolation=cv2.INTER_LINEAR)
@@ -511,7 +546,13 @@ while True:
     #블러링 => 블러링을 적용할 마스크만 생성
     elif mode == 3:
         if sub_frame is not None: #토글 됐을 경우
+            temp_frame = frame.copy()
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
+            if blured_tmask is None: #마스크가 없을 경우 초기화
+                blured_tmask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+            if len(fingers) == 1:
+                center = fingers[0]
+                blured_tmask = tracking_mask(blured_tmask, center[0], center[1], target_size)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
             if blured_mask is None: #마스크가 없을 경우 초기화
@@ -524,8 +565,14 @@ while True:
         put_string(_mainboard, "'d' : Blur Size DOWN ", (_mainboard.shape[1] // 2, 35), color=(0, 0, 255), size=0.6)
     #샤프닝 모드
     elif mode == 4: 
-        if sub_frame is not None: #토글
+        if sub_frame is not None: #토글 됐을 경우
+            temp_frame = frame.copy()
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
+            if sharped_tmask is None: #마스크가 없을 경우 초기화
+                sharped_tmask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+            if len(fingers) == 1:
+                center = fingers[0]
+                sharped_tmask = tracking_mask(sharped_tmask, center[0], center[1], target_size)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
             if sharped_mask is None: #마스크가 없을 경우 초기화
@@ -543,8 +590,14 @@ while True:
         put_string(_mainboard, "eraser Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
 
     elif mode == 6: #카툰 렌더링 모드
-        if sub_frame is not None: #토글
+        if sub_frame is not None: #토글 됐을 경우
+            temp_frame = frame.copy()
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
+            if canny_tmask is None: #마스크가 없을 경우 초기화
+                canny_tmask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+            if len(fingers) == 1:
+                center = fingers[0]
+                canny_tmask = tracking_mask(canny_tmask, center[0], center[1], target_size)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
             if canny_mask is None: #마스크가 없을 경우 초기화
@@ -580,14 +633,16 @@ while True:
         if canny_mask is not None: #카툰 렌더링 적용
             frame = apply_canny(frame.copy(), canny_mask)
         if blured_mask is not None: #블러 적용
-            blured_mask = cv2.resize(blured_mask, (frame.shape[1], frame.shape[0]))
-            target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
-            blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
-            frame[blured_mask > 0] = blured_frame[blured_mask > 0]
+            frame = apply_bluring(frame.copy(), blured_mask)
         if sharped_mask is not None: #샤프닝 적용
             frame = apply_sharpening(0, frame.copy(), sharped_mask)
     else: #토글일 경우에만 
-        pass
+        if canny_tmask is not None: #카툰 렌더링 적용
+            frame = apply_canny(frame.copy(), canny_tmask)
+        if blured_tmask is not None: #블러 적용
+            frame = apply_bluring(frame.copy(), blured_tmask)
+        if sharped_tmask is not None: #샤프닝 적용
+            frame = apply_sharpening(0, frame.copy(), sharped_tmask)
     
     #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
@@ -596,7 +651,7 @@ while True:
         capture_list.append(move_frame)
     if toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
         temp_list.append(temp_frame) #현재 작업중인 프레임을 임시 리스트에 집어넣기
-    if len(capture_list) == 0 and toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
+    if len(capture_list) == 0 and toggle: #만약 캡쳐 이미지가 없고 토글 상태이면 임시 리스트 삭제
         temp_list.clear()
         toggle = False
     
