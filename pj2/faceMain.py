@@ -269,6 +269,7 @@ target_size = 10 #블러 수행 사이즈
 
 #샤프닝 모드 시에 사용할 변수
 sharped_mask = None
+sharped_frame_mask = None
 
 #캐니 엣지를 통한 카툰 렌더링 관련 변수
 canny_mask = None
