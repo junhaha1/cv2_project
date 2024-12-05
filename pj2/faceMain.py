@@ -264,6 +264,8 @@ MOVE_THRESHOLD = 10 #화면 이동 시 임계치
 
 #블러 모드 시에 사용할 변수
 blured_mask = None #블러 마스크
+blured_frame_mask = None
+
 blured_frame = None #블러 마스크에서 적용된 블러 이미지
 target_size = 10 #블러 수행 사이즈
 
