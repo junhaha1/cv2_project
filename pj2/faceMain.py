@@ -93,10 +93,9 @@ def tracking_mask(mask, center_x, center_y, radius=10):
     return mask
 
 #해당 좌표에 마스크 지우기
-def eraser_mask(mask1, mask2, center_x, center_y, radius=10):
-    mask1 = cv2.circle(mask1, (center_x, center_y),  radius, 0, cv2.FILLED)
-    mask2 = cv2.circle(mask2, (center_x, center_y),  radius, 0, cv2.FILLED)
-    return mask1, mask2
+def eraser_mask(mask, center_x, center_y, radius=10):
+    mask = cv2.circle(mask, (center_x, center_y),  radius, 0, cv2.FILLED)
+    return mask
 
 #화면에 초록색 영역을 추적
 def tracking_color(frame, fingers, lower, upper, initial_radius=None, target_frame=None):
@@ -149,15 +148,15 @@ def tracking_color(frame, fingers, lower, upper, initial_radius=None, target_fra
         return target_frame, fingers
 
 #블러 적용 함수
-def apply_bluring(frame, mask):
+def apply_bluring(frame, mask, frame_mask):
     blured_mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
     target_frame = cv2.bitwise_and(frame.copy(), frame.copy(), mask=blured_mask)
     blured_frame = cv2.GaussianBlur(target_frame, (15, 15), 0)
-    frame[blured_mask > 0] = blured_frame[blured_mask > 0]
+    frame[frame_mask > 0] = blured_frame[frame_mask > 0]
 
     return frame
 #해당 영역 샤프닝 적용 (선명화)
-def apply_sharpening(i, image, img_mask):
+def apply_sharpening(i, image, img_mask, frame_mask):
     masks = [
         [[0, -1, 0],
          [-1, 5, -1],
@@ -173,7 +172,7 @@ def apply_sharpening(i, image, img_mask):
     img_mask = cv2.resize(img_mask, (image.shape[1], image.shape[0]))
     target_image = cv2.bitwise_and(image.copy(), image.copy(), mask=img_mask)
     sarped_image = cv2.filter2D(target_image, -1, sharp_mask)
-    image[img_mask > 0] = sarped_image[img_mask > 0]
+    image[frame_mask > 0] = sarped_image[frame_mask > 0]
 
     return image
 
@@ -263,8 +262,8 @@ ZOOM_THRESHOLD = 50 #확대 축소 시 임계치
 MOVE_THRESHOLD = 10 #화면 이동 시 임계치
 
 #블러 모드 시에 사용할 변수
-blured_mask = None #블러 마스크
-blured_frame_mask = None
+blured_mask = None #블러 마스크 테두리 처리를 위해 영역을 좀더 넓게 지정
+blured_frame_mask = None #사용자가 입력한 경로에 대해서 블러 적용할 마스크
 
 blured_frame = None #블러 마스크에서 적용된 블러 이미지
 target_size = 10 #블러 수행 사이즈
@@ -295,7 +294,10 @@ toggle = False
 side_gap = 10
 
 blured_tmask = None
+blured_frame_tmask = None
+
 sharped_tmask = None
+sharped_frame_tmask = None
 canny_tmask = None
 
 #원근법 관련 변수
@@ -346,6 +348,7 @@ while True:
         current_scale = 1.0
         mode = 0
         blured_mask = None
+        blured_frame_mask = None
         blured_frame = None
         target_size = 10
 
@@ -452,9 +455,9 @@ while True:
             if canny_tmask is not None: #카툰 렌더링 적용
                 img = apply_canny(img.copy(), canny_tmask)
             if blured_tmask is not None: #블러 적용
-                img = apply_bluring(img.copy(), blured_tmask)
+                img = apply_bluring(img.copy(), blured_tmask, blured_frame_tmask)
             if sharped_tmask is not None: #샤프닝 적용
-                img = apply_sharpening(0, img.copy(), sharped_tmask)
+                img = apply_sharpening(0, img.copy(), sharped_tmask, sharped_tmask)
 
             blured_tmask = None
             sharped_tmask = None
@@ -562,16 +565,20 @@ while True:
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
             if blured_tmask is None: #마스크가 없을 경우 초기화
                 blured_tmask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+                blured_frame_tmask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
             if len(fingers) == 1:
                 center = fingers[0]
-                blured_tmask = tracking_mask(blured_tmask, center[0], center[1], target_size)
+                blured_tmask = tracking_mask(blured_tmask, center[0], center[1], target_size + 10) #테두리 처리를 위해 영역을 좀더 넓게 지정
+                blured_frame_tmask = tracking_mask(blured_frame_tmask, center[0], center[1], target_size)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
             if blured_mask is None: #마스크가 없을 경우 초기화
                 blured_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+                blured_frame_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
             if len(fingers) == 1:
                 center = fingers[0]
-                blured_mask = tracking_mask(blured_mask, center[0], center[1], target_size)
+                blured_mask = tracking_mask(blured_mask, center[0], center[1], target_size + 10)
+                blured_frame_mask = tracking_mask(blured_frame_mask, center[0], center[1], target_size)
         put_string(_mainboard, "Blur Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
         put_string(_mainboard, "'u' : Blur Size UP ", (_mainboard.shape[1] // 2, 15), color=(255, 0, 0), size=0.6)
         put_string(_mainboard, "'d' : Blur Size DOWN ", (_mainboard.shape[1] // 2, 35), color=(0, 0, 255), size=0.6)
@@ -582,23 +589,30 @@ while True:
             frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
             if sharped_tmask is None: #마스크가 없을 경우 초기화
                 sharped_tmask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+                sharped_frame_tmask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
             if len(fingers) == 1:
                 center = fingers[0]
-                sharped_tmask = tracking_mask(sharped_tmask, center[0], center[1], target_size)
+                sharped_tmask = tracking_mask(sharped_tmask, center[0], center[1], target_size + 10)
+                sharped_frame_tmask = tracking_mask(sharped_frame_tmask, center[0], center[1], target_size)
         else:
             frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
             if sharped_mask is None: #마스크가 없을 경우 초기화
                 sharped_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
+                sharped_frame_mask = np.zeros((frame.shape[0], frame.shape[1]), np.uint8)
             if len(fingers) == 1:
                 center = fingers[0]
-                sharped_mask = tracking_mask(sharped_mask, center[0], center[1], target_size)
+                sharped_mask = tracking_mask(sharped_mask, center[0], center[1], target_size + 10)
+                sharped_frame_mask = tracking_mask(sharped_frame_mask, center[0], center[1], target_size)
         put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
 
     elif not toggle and mode == 5: #지우개 모드
         frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
         if len(fingers) == 1:
             center = fingers[0]
-            blured_mask, sharped_mask = eraser_mask(blured_mask, sharped_mask, center[0], center[1], target_size)
+            blured_mask = eraser_mask(blured_mask, center[0], center[1], target_size)
+            sharped_mask = eraser_mask(sharped_mask, center[0], center[1], target_size)
+            blured_frame_mask = eraser_mask(blured_frame_mask, center[0], center[1], target_size + 10)
+            sharped_frame_mask = eraser_mask(sharped_frame_mask, center[0], center[1], target_size + 10)
         put_string(_mainboard, "eraser Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
 
     elif mode == 6: #카툰 렌더링 모드
@@ -642,16 +656,16 @@ while True:
         if canny_mask is not None: #카툰 렌더링 적용
             frame = apply_canny(frame.copy(), canny_mask)
         if blured_mask is not None: #블러 적용
-            frame = apply_bluring(frame.copy(), blured_mask)
+            frame = apply_bluring(frame.copy(), blured_mask, blured_frame_mask)
         if sharped_mask is not None: #샤프닝 적용
-            frame = apply_sharpening(0, frame.copy(), sharped_mask)
+            frame = apply_sharpening(0, frame.copy(), sharped_mask, sharped_frame_mask)
     else: #토글일 경우에만 
         if canny_tmask is not None: #카툰 렌더링 적용
             frame = apply_canny(frame.copy(), canny_tmask)
         if blured_tmask is not None: #블러 적용
-            frame = apply_bluring(frame.copy(), blured_tmask)
+            frame = apply_bluring(frame.copy(), blured_tmask, blured_frame_tmask)
         if sharped_tmask is not None: #샤프닝 적용
-            frame = apply_sharpening(0, frame.copy(), sharped_tmask)
+            frame = apply_sharpening(0, frame.copy(), sharped_tmask, sharped_frame_tmask)
         if perscheck: #원근 적용이라면
             perscheck = False
             temp_frame = apply_perspective(frame, dots)
