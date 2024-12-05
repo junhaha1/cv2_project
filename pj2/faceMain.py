@@ -347,8 +347,7 @@ while True:
         move_x, move_y = 0,0
         current_scale = 1.0
         mode = 0
-        blured_mask = None
-        blured_frame_mask = None
+        
         blured_frame = None
         target_size = 10
 
@@ -359,13 +358,21 @@ while True:
 
         dots.clear()
         perscheck = False
-
+        blured_mask = None
         sharped_mask = None
         canny_mask = None
+
+        blured_frame_mask = None
+        sharped_frame_mask = None
+        
 
         blured_tmask = None
         sharped_tmask = None
         canny_tmask = None
+
+        blured_frame_tmask = None
+        sharped_frame_tmask = None
+        
     elif key == ord('o'): #모든 기본 모드 주요 변경사항만 유지
         fingers.clear()
         dots.clear()
@@ -449,6 +456,9 @@ while True:
         blured_tmask = None
         sharped_tmask = None
         canny_tmask = None
+
+        blured_frame_tmask = None
+        sharped_frame_tmask = None
     elif key == 13: #엔터 눌렀을 시에 수정된 이미지를 결과 리스트에 추가:
         if toggle and len(temp_list) > 0:
             img = temp_list.pop()
@@ -457,11 +467,16 @@ while True:
             if blured_tmask is not None: #블러 적용
                 img = apply_bluring(img.copy(), blured_tmask, blured_frame_tmask)
             if sharped_tmask is not None: #샤프닝 적용
-                img = apply_sharpening(0, img.copy(), sharped_tmask, sharped_tmask)
+                img = apply_sharpening(0, img.copy(), sharped_tmask, sharped_frame_tmask)
 
             blured_tmask = None
             sharped_tmask = None
             canny_tmask = None
+
+            blured_frame_tmask = None
+            sharped_frame_tmask = None
+
+            mode = 0
 
             result_list.append(img)
             toggle = False
@@ -605,16 +620,29 @@ while True:
                 sharped_frame_mask = tracking_mask(sharped_frame_mask, center[0], center[1], target_size)
         put_string(_mainboard, "sharp Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
 
-    elif not toggle and mode == 5: #지우개 모드
-        frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
-        if len(fingers) == 1:
-            center = fingers[0]
-            blured_mask = eraser_mask(blured_mask, center[0], center[1], target_size)
-            sharped_mask = eraser_mask(sharped_mask, center[0], center[1], target_size)
-            blured_frame_mask = eraser_mask(blured_frame_mask, center[0], center[1], target_size + 10)
-            sharped_frame_mask = eraser_mask(sharped_frame_mask, center[0], center[1], target_size + 10)
-        put_string(_mainboard, "eraser Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
+    elif mode == 5: #지우개 모드
+        if sub_frame is not None: #토글 됐을 경우
+            temp_frame = frame.copy()
+            frame, fingers = tracking_color(sub_frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size, target_frame=frame)
+            if len(fingers) == 1:
+                center = fingers[0]
+                blured_tmask = eraser_mask(blured_tmask, center[0], center[1], target_size)
+                sharped_tmask = eraser_mask(sharped_tmask, center[0], center[1], target_size)
+                canny_tmask = eraser_mask(canny_tmask, center[0], center[1], target_size)
 
+                blured_frame_tmask = eraser_mask(blured_frame_tmask, center[0], center[1], target_size + 10)
+                sharped_frame_tmask = eraser_mask(sharped_frame_tmask, center[0], center[1], target_size + 10)
+        else:
+            frame, fingers = tracking_color(frame.copy(), fingers, lower_green, upper_green, initial_radius=target_size)
+            if len(fingers) == 1:
+                center = fingers[0]
+                blured_mask = eraser_mask(blured_mask, center[0], center[1], target_size)
+                sharped_mask = eraser_mask(sharped_mask, center[0], center[1], target_size)
+                canny_mask = eraser_mask(canny_mask, center[0], center[1], target_size)
+
+                blured_frame_mask = eraser_mask(blured_frame_mask, center[0], center[1], target_size + 10)
+                sharped_frame_mask = eraser_mask(sharped_frame_mask, center[0], center[1], target_size + 10)
+        put_string(_mainboard, "eraser Size : ", (_mainboard.shape[1] // 2, 55), target_size, color=(0, 0, 0), size=0.6)
     elif mode == 6: #카툰 렌더링 모드
         if sub_frame is not None: #토글 됐을 경우
             temp_frame = frame.copy()
