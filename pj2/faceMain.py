@@ -705,7 +705,7 @@ while True:
     #화면 이동에 따른 관심 구역 설정
     move_frame = frame[move_y:move_y + frame_height, move_x:move_x + frame_width]
 
-    if (not toggle) and key == ord('c'): #현재 화면 캡쳐하기
+    if (not toggle) and len(capture_list) < 6 and key == ord('c'): #현재 화면 캡쳐하기
         capture_list.append(move_frame)
     if toggle: #만약 토글된 화면이라면 현재 수정된 이미지를 임시 리스트에 넣기 위한 코드
         temp_list.append(temp_frame) #현재 작업중인 프레임을 임시 리스트에 집어넣기
@@ -748,27 +748,27 @@ while True:
     put_string(_mainboard, "'b' : Blur", (5, 130), color=(0,0,0))
     put_string(_mainboard, "'s' : Sharp", (5, 150), color=(0,0,0))
     put_string(_mainboard, "'k' : cartoon", (5, 170), color=(0,0,0))
+    put_string(_mainboard, "'e' : Eraser", (5, 190), color=(0,0,0))
 
-    put_string(_mainboard, "<Frame, List>", (5, 195), color=(255,0,255))
-    put_string(_mainboard, "'t' : Frame_Toggle", (5, 210), color=(0,0,0))
-    put_string(_mainboard, "'-' : Cap_DEL", (5, 230), color=(0,0,0))
-    put_string(_mainboard, "'left', 'right' : Cap_MOVE", (5, 250), color=(0,0,0))
-    put_string(_mainboard, "'backspace' : Res_DEL", (5, 270), color=(0,0,0))
-    put_string(_mainboard, "'up', 'down' : Res_MOVE", (5, 290), color=(0,0,0))
-    put_string(_mainboard, "'Enter' : Result_Print", (5, 310), color=(0,0,0))
-    put_string(_mainboard, "'q' : Result_Exit", (5, 330), color=(0,0,0))
+    put_string(_mainboard, "<Frame, List>", (5, 215), color=(255,0,255))
+    put_string(_mainboard, "'t' : Frame_Toggle", (5, 230), color=(0,0,0))
+    put_string(_mainboard, "'-' : Cap_DEL", (5, 250), color=(0,0,0))
+    put_string(_mainboard, "'left', 'right' : Cap_MOVE", (5, 270), color=(0,0,0))
+    put_string(_mainboard, "'backspace' : Res_DEL", (5, 290), color=(0,0,0))
+    put_string(_mainboard, "'up', 'down' : Res_MOVE", (5, 310), color=(0,0,0))
+    put_string(_mainboard, "'Enter' : Result_Print", (5, 330), color=(0,0,0))
+    put_string(_mainboard, "'q' : Result_Exit", (5, 350), color=(0,0,0))
     
     if not toggle:
-        put_string(_mainboard, "<Video Frame>", (5, 355), color=(255,0,255))
-        put_string(_mainboard, "'z' : Zoom", (5, 380), color=(0,0,0))
-        put_string(_mainboard, "'m' : Move", (5, 400), color=(0,0,0))
-        put_string(_mainboard, "'e' : Eraser", (5, 420), color=(0,0,0))
-        put_string(_mainboard, "'c' : Capture", (5, 440), color=(0,0,0))
+        put_string(_mainboard, "<Video Frame>", (5, 375), color=(255,0,255))
+        put_string(_mainboard, "'z' : Zoom", (5, 390), color=(0,0,0))
+        put_string(_mainboard, "'m' : Move", (5, 410), color=(0,0,0))
+        put_string(_mainboard, "'c' : Capture", (5, 430), color=(0,0,0))
     else:
-        put_string(_mainboard, "<Image Frame>", (5, 355), color=(255,0,255))
-        put_string(_mainboard, "'Enter': Image complete", (5, 380), color=(0,0,0))
-        put_string(_mainboard, "'p' : perspective", (5, 400), color=(0,0,0))
-        put_string(_mainboard, "'a' : pers_dot delete", (5, 420), color=(0,0,0))
+        put_string(_mainboard, "<Image Frame>", (5, 375), color=(255,0,255))
+        put_string(_mainboard, "'Enter': Image complete", (5, 390), color=(0,0,0))
+        put_string(_mainboard, "'p' : perspective", (5, 410), color=(0,0,0))
+        put_string(_mainboard, "'a' : pers_dot delete", (5, 430), color=(0,0,0))
 
     put_string(_mainboard, "Max_Capture = ", (250, main_height - 40), 6, color=(0,0,255), size=0.7)
     put_string(_mainboard, "Current_Index = ", (250, main_height - 20), capture_index, color=(0,0,255), size=0.7)
